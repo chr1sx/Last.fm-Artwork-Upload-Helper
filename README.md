@@ -26,7 +26,7 @@
 
 - A userscript manager extension:  
   - [Violentmonkey](https://violentmonkey.github.io/) (recommended)
-  - or [Tampermonkey](https://www.tampermonkey.net/)
+  - [Tampermonkey](https://www.tampermonkey.net/)
 
 ---
 
