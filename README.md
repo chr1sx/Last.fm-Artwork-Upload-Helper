@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/screenshots/logo.png?raw=true" width="200" alt="Logo">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/logo.png?raw=true" width="200" alt="Logo">
 
 # Last.fm Artwork Upload Helper
 
@@ -41,7 +41,7 @@
 
 ## Usage
 
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/screenshots/screenshot1.png?raw=true" width="310" align="right" alt="Helper panel on Last.fm">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot1.png?raw=true" width="310" align="right" alt="Helper panel on Last.fm">
 
 1. Navigate to an upload page on Last.fm ([Example page](https://www.last.fm/music/Front+Line+Assembly/Civilization/+images/upload))  
 2. The helper panel appears automatically on the right side of the page.  
@@ -57,7 +57,7 @@
 
 ## Settings Configuration
 
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/screenshots/screenshot2.png?raw=true" width="310" align="right" alt="Settings panel">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot2.png?raw=true" width="310" align="right" alt="Settings panel">
 
 ### Sources
 Select which platforms to search:
