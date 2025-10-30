@@ -18,8 +18,8 @@
 // === CONFIG ===
 const DEFAULT_CONFIG = {
     theme: 'dark',
-    resolution: '1400',
-    sources: ['Amazon Music', 'Bandcamp', 'Deezer', 'Spotify', 'Qobuz', 'Tidal'],
+    resolution: '0',
+    sources: ['Bandcamp', 'Deezer', 'Discogs', 'Spotify', 'Qobuz', 'Tidal'],
     country: 'us',
     remoteAgent: 'lastfm-mh-integration/3.4',
     debug: true
@@ -770,5 +770,6 @@ function injectArtworkSelectionScript() {
         currentUrl: location.href
     });
 })();
+
 
 })();
