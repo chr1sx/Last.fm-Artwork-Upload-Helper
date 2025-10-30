@@ -61,11 +61,11 @@
 
 ### Sources
 Select which platforms to search:
-- **Streaming**: Amazon, Amazon Music, Apple Music, Deezer, Spotify, SoundCloud, Tidal, FLO  
+- **Streaming**: Amazon, Amazon Music, Apple Music, Deezer, Spotify, Tidal, FLO  
 - **Stores**: Bandcamp, Beatport, BOOTH, iTunes, OTOTOY, RecoChoku, Qobuz  
 - **Databases**: Discogs, Last.fm, MusicBrainz, Metal Archives, VGMdb, THWiki  
 - **Regional**: Bugs, Gaana, KKBOX, KuGou, LINE MUSIC, Melon, NetEase  
-- **Other**: Fanart.tv, Soulseek  
+- **Other**: Fanart.tv, SoundCloud, Soulseek  
 _Default_: Bandcamp, Deezer, Discogs, Spotify, Qobuz, Tidal
 
 ### Minimal Resolution
