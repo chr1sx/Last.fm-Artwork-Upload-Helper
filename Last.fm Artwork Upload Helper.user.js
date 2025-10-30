@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
     sources: ['Bandcamp', 'Deezer', 'Discogs', 'Spotify', 'Qobuz', 'Tidal'],
     country: 'us',
     remoteAgent: 'lastfm-mh-integration/3.4',
-    debug: true
+    debug: false
 };
 
 let MH_CONFIG = {};
@@ -770,6 +770,5 @@ function injectArtworkSelectionScript() {
         currentUrl: location.href
     });
 })();
-
 
 })();
