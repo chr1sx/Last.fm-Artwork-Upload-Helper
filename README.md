@@ -57,7 +57,7 @@
 
 ## Settings Configuration
 
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot2.png?raw=true" width="310" align="right" alt="Settings panel">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot2.png?raw=true" width="300" align="right" alt="Settings panel">
 
 ### Sources
 Select which platforms to search:
