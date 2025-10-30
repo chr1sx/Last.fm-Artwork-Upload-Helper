@@ -10,6 +10,7 @@
 // @grant        GM_getValue
 // @connect      covers.musichoarders.xyz
 // @run-at       document-idle
+// @license      MIT
 // ==/UserScript==
 
 (function () {
@@ -772,3 +773,4 @@ function injectArtworkSelectionScript() {
 })();
 
 })();
+
