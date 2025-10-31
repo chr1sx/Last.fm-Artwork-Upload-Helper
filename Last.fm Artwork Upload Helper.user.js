@@ -357,6 +357,7 @@ window.addEventListener('message', async function(event) {
 
     if (event.data && event.data.name === 'artworkSelected' && event.data.data && event.data.data.url) {
         const artworkUrl = event.data.data.url;
+        const releaseDate = event.data.data.releaseDate || null;
         const statusEl = $('#mh-status');
         if (statusEl) statusEl.textContent = 'Artwork selected! Downloading and setting...';
 
@@ -377,6 +378,9 @@ window.addEventListener('message', async function(event) {
                 fileInput.dispatchEvent(new Event('change', { bubbles: true }));
                 fileInput.dispatchEvent(new Event('input', { bubbles: true }));
 
+                // Fill in Title and Description fields
+                await fillLastFmMetadata(releaseDate);
+
                 if (statusEl) statusEl.textContent = '✓ Artwork set! You can now upload on Last.fm.';
                 if (MH_CONFIG.debug) console.log('Artwork successfully set to file input.');
             } else {
@@ -396,6 +400,43 @@ window.addEventListener('message', async function(event) {
         }
     }
 });
+
+async function fillLastFmMetadata(releaseDate) {
+    try {
+        // Wait a bit for the form to be ready
+        await sleep(500);
+
+        // Find Title field (id="id_title" or name="title")
+        const titleInput = document.querySelector('input#id_title[name="title"], input[name="title"]');
+
+        // Find Description field (id="id_description" or name="description")
+        const descriptionInput = document.querySelector('textarea#id_description[name="description"], textarea[name="description"]');
+
+        if (currentInfo && titleInput) {
+            const titleValue = `${currentInfo.artist} - ${currentInfo.album}`;
+            titleInput.value = titleValue;
+            titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+            titleInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (MH_CONFIG.debug) console.log('CoverFinder: Set title to:', titleValue);
+        }
+
+        if (descriptionInput) {
+            let descValue = '';
+            if (releaseDate) {
+                descValue = `Released: ${releaseDate}`;
+            } else {
+                // Fallback description if no release date
+                descValue = `Album artwork for ${currentInfo.album} by ${currentInfo.artist}`;
+            }
+            descriptionInput.value = descValue;
+            descriptionInput.dispatchEvent(new Event('input', { bubbles: true }));
+            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (MH_CONFIG.debug) console.log('CoverFinder: Set description to:', descValue);
+        }
+    } catch (e) {
+        console.warn('CoverFinder: Error filling metadata fields:', e);
+    }
+}
 
 async function findLastFmFileInput(timeout = 10000) {
     const start = Date.now();
@@ -600,45 +641,80 @@ function injectArtworkSelectionScript() {
             }
 
             function setupClickHandlers() {
-                const processedElements = new Set();
-                const allImages = document.querySelectorAll('img');
+                // AGGRESSIVE APPROACH: Add a global click interceptor
+                document.addEventListener('click', function(e) {
+                    // Check if the click target is or contains an image
+                    let targetImg = null;
 
-                allImages.forEach(img => {
-                    const parentLink = img.closest('a');
-
-                    if (parentLink && !processedElements.has(parentLink)) {
-                        processedElements.add(parentLink);
-                        attachHandlers(parentLink, img);
-                    } else if (!parentLink && !processedElements.has(img)) {
-                        processedElements.add(img);
-                        attachHandlers(img, img);
+                    if (e.target.tagName === 'IMG') {
+                        targetImg = e.target;
+                    } else {
+                        targetImg = e.target.querySelector('img');
                     }
-                });
 
-                function attachHandlers(clickTarget, imageElement) {
-                    clickTarget.style.cursor = 'pointer';
-
-                    clickTarget.addEventListener('mousedown', function(e) {
-                        if (e.button !== 0) return;
-
+                    if (targetImg) {
+                        // STOP EVERYTHING
                         e.preventDefault();
                         e.stopPropagation();
                         e.stopImmediatePropagation();
 
-                        const imageUrl = getLargestImageUrl(imageElement);
+                        const imageUrl = getLargestImageUrl(targetImg);
+
+                        // Try to extract release date from the page
+                        let releaseDate = null;
+                        try {
+                            const dateElements = document.querySelectorAll('[data-date], [data-release], [data-year], td, dd, p, span, div');
+                            for (const elem of dateElements) {
+                                const text = elem.textContent || elem.innerText || '';
+                                const datePatterns = [
+                                    /(?:^|\\s)(\\d{4}-\\d{2}-\\d{2})(?:\\s|$)/,
+                                    /(?:^|\\s)(\\d{1,2}\\.\\d{1,2}\\.\\d{4})(?:\\s|$)/,
+                                    /(?:^|\\s)(\\d{1,2}\\/\\d{1,2}\\/\\d{4})(?:\\s|$)/,
+                                    /(?:^|\\s)([A-Z][a-z]+ \\d{1,2},? \\d{4})(?:\\s|$)/,
+                                    /(?:^|\\s)(\\d{1,2} [A-Z][a-z]+ \\d{4})(?:\\s|$)/,
+                                    /(?:^|\\s)(\\d{4})(?:\\s|$)/
+                                ];
+
+                                for (const pattern of datePatterns) {
+                                    const match = text.match(pattern);
+                                    if (match && match[1]) {
+                                        const potentialDate = match[1].trim();
+                                        if (/19\\d{2}|20\\d{2}/.test(potentialDate)) {
+                                            releaseDate = potentialDate;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (releaseDate) break;
+                            }
+
+                            if (!releaseDate) {
+                                const metaDate = document.querySelector('meta[property="music:release_date"], meta[name="music:release_date"], meta[property="release_date"]');
+                                if (metaDate && metaDate.content) {
+                                    releaseDate = metaDate.content;
+                                }
+                            }
+
+                            if (debug && releaseDate) console.log('MH Puppet: Found release date:', releaseDate);
+                        } catch (err) {
+                            if (debug) console.warn('MH Puppet: Error extracting release date:', err);
+                        }
 
                         if (imageUrl && window.opener && !window.opener.closed) {
-                            if (debug) console.log('MH Puppet: Sending artwork URL:', imageUrl);
+                            if (debug) console.log('MH Puppet: Sending artwork URL:', imageUrl, 'with release date:', releaseDate);
 
                             window.opener.postMessage({
                                 name: 'artworkSelected',
-                                data: { url: imageUrl }
+                                data: {
+                                    url: imageUrl,
+                                    releaseDate: releaseDate
+                                }
                             }, targetOrigin);
 
-                            imageElement.style.outline = '3px solid #00ff00';
-                            imageElement.style.boxShadow = '0 0 20px rgba(0,255,0,0.5)';
+                            targetImg.dataset.selected = 'true';
+                            targetImg.style.outline = '3px solid #00ff00 !important';
+                            targetImg.style.boxShadow = '0 0 20px rgba(0,255,0,0.5) !important';
 
-                            // Focus opener window before closing (Firefox fix)
                             try {
                                 window.opener.focus();
                             } catch (e) {
@@ -647,46 +723,53 @@ function injectArtworkSelectionScript() {
 
                             setTimeout(() => window.close(), 500);
                         } else {
-                            if (debug) console.warn('MH Puppet: Could not extract image URL or no opener', {
-                                imageUrl,
-                                hasOpener: !!window.opener,
-                                openerClosed: window.opener ? window.opener.closed : 'N/A'
-                            });
+                            if (debug) console.warn('MH Puppet: Could not extract image URL or no opener');
                         }
 
                         return false;
-                    }, true);
-
-                    clickTarget.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                        return false;
-                    }, true);
-
-                    clickTarget.addEventListener('mouseup', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                        return false;
-                    }, true);
-
-                    clickTarget.addEventListener('contextmenu', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return false;
-                    }, true);
-
-                    if (clickTarget.tagName === 'A') {
-                        clickTarget.addEventListener('auxclick', function(e) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            return false;
-                        }, true);
                     }
-                }
+                }, true); // Use capture phase
 
-                if (debug) console.log('MH Puppet: Click handlers attached to', processedElements.size, 'elements');
+                // Also block mousedown and mouseup on all images
+                document.addEventListener('mousedown', function(e) {
+                    if (e.target.tagName === 'IMG' || e.target.querySelector('img')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                    }
+                }, true);
+
+                document.addEventListener('mouseup', function(e) {
+                    if (e.target.tagName === 'IMG' || e.target.querySelector('img')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                    }
+                }, true);
+
+                // Add visual feedback to all images
+                const allImages = document.querySelectorAll('img');
+                allImages.forEach(img => {
+                    img.style.cursor = 'pointer';
+
+                    img.addEventListener('mouseenter', function() {
+                        if (!this.dataset.selected) {
+                            this.style.outline = '3px solid #00ff00 !important';
+                            this.style.boxShadow = '0 0 15px rgba(0,255,0,0.5) !important';
+                            this.style.filter = 'brightness(1.1)';
+                        }
+                    });
+
+                    img.addEventListener('mouseleave', function() {
+                        if (!this.dataset.selected) {
+                            this.style.outline = '';
+                            this.style.boxShadow = '';
+                            this.style.filter = '';
+                        }
+                    });
+                });
+
+                if (debug) console.log('MH Puppet: Global click interceptor installed for', allImages.length, 'images');
             }
 
             const overlay = document.createElement('div');
@@ -773,4 +856,3 @@ function injectArtworkSelectionScript() {
 })();
 
 })();
-
