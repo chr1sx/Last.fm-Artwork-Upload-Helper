@@ -5,7 +5,7 @@
 # Last.fm Artwork Upload Helper
 
 [![Install Script](https://img.shields.io/badge/Install%20Script-brightgreen?style=for-the-badge)](https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/main/Last.fm%20Artwork%20Upload%20Helper.user.js)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://opensource.org/license/mit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)]([https://opensource.org/license/mit](https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/tree/main?tab=MIT-1-ov-file#))
 
 *A userscript that streamlines uploading album artwork to Last.fm with one click.*
 
@@ -84,6 +84,6 @@ Choose between Dark Mode and Light Mode.
 
 ## License
 
-This userscript is available under the [MIT License](https://opensource.org/license/mit).
+This userscript is available under the [MIT License]([https://opensource.org/license/mit](https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/tree/main?tab=MIT-1-ov-file#)).
 
 ---
