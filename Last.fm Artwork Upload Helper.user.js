@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0
+// @version      1.0.1
 // @description  A userscript that streamlines the process of uploading high-quality album artwork to Last.fm by integrating with COV - Cover Search Engine.
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
