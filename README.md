@@ -42,7 +42,7 @@
 
 <img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot1.png?raw=true" width="240" align="right" alt="Helper panel on Last.fm">
 
-1. Navigate to an upload page on Last.fm ([Example page](https://www.last.fm/music/Front+Line+Assembly/Civilization/+images/upload))  
+1. Navigate to an upload page on Last.fm ([Example page](https://www.last.fm/music/Front+Line+Assembly/Civilization/+images/upload)).  
 2. The helper panel appears automatically on the right side of the page.  
 3. Click **Open Artwork Search**.  
    - A new window opens with **COV - Cover Search Engine**.  
