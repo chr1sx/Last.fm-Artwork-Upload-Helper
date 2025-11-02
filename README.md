@@ -66,7 +66,7 @@ Select up to nine platforms to search:
 - **Regional**: Bugs, Gaana, KKBOX, KuGou, LINE MUSIC, Melon, NetEase  
 - **Other**: Fanart.tv, SoundCloud, Soulseek  
 
-_Default_: Bandcamp, Deezer, Discogs, Spotify, Qobuz, Tidal
+_Default_: Bandcamp, Deezer, Discogs, Spotify, Qobuz
 
 ### Minimal Resolution
 Set the minimum image resolution (e.g. 600 for 600×600px or higher).  
