@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.1
-// @description  A userscript that streamlines the process of uploading high-quality album artwork to Last.fm by integrating with COV - Cover Search Engine.
+// @version      1.0.2
+// @description  A userscript that streamlines the process of uploading album artwork to Last.fm
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
 // @grant        GM_xmlhttpRequest
@@ -16,7 +16,7 @@
 (function () {
 'use strict';
 
-// === CONFIG ===
+// === Configuration ===
 const DEFAULT_CONFIG = {
     theme: 'dark',
     resolution: '0',
@@ -28,22 +28,19 @@ const DEFAULT_CONFIG = {
 
 let MH_CONFIG = {};
 
-// Full list of available sources for checkboxes
 const ALL_SOURCES = [
-    'Amazon', 'Amazon Music', 'Apple Music', 'Bandcamp', 'Beatport', 'Bugs', 'BOOTH', 'Deezer', 'Discogs',
+    'Amazon Music', 'Apple Music', 'Bandcamp', 'Beatport', 'Bugs', 'BOOTH', 'Deezer', 'Discogs',
     'Fanart.tv', 'FLO', 'Gaana', 'iTunes', 'KKBOX', 'KuGou', 'Last.fm', 'LINE MUSIC', 'Melon',
     'Metal Archives', 'MusicBrainz', 'NetEase', 'OTOTOY', 'Qobuz', 'RecoChoku', 'Soulseek',
     'SoundCloud', 'Spotify', 'THWiki', 'TIDAL', 'VGMdb'
 ];
 
-
-// =================
-
-/* Helpers */
+// === Utility Functions ===
 const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => Array.from((r || document).querySelectorAll(s));
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function normalizeSources(list) {
     return list.map(s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '')).join(',');
@@ -55,31 +52,29 @@ async function saveConfig() {
 
 async function loadConfig() {
     const storedConfig = await GM_getValue('mh_config');
-    if (storedConfig) {
-        MH_CONFIG = Object.assign({}, DEFAULT_CONFIG, JSON.parse(storedConfig));
-    } else {
-        MH_CONFIG = Object.assign({}, DEFAULT_CONFIG);
-        await saveConfig();
-    }
+    MH_CONFIG = storedConfig ? Object.assign({}, DEFAULT_CONFIG, JSON.parse(storedConfig)) : Object.assign({}, DEFAULT_CONFIG);
+    if (!storedConfig) await saveConfig();
 }
 
 function buildMhUrl({ artist, album }, opts = {}) {
     const params = new URLSearchParams();
     const cfg = Object.assign({}, MH_CONFIG, opts || {});
+
     if (cfg.theme) params.set('theme', cfg.theme);
     if (cfg.resolution) params.set('resolution', cfg.resolution);
     if (cfg.sources && cfg.sources.length) params.set('sources', normalizeSources(cfg.sources));
     if (cfg.country) params.set('country', cfg.country.toLowerCase());
     if (artist) params.set('artist', artist);
     if (album) params.set('album', album);
-    params.set('identifier', 'lastfm-mh-puppet');
+
+    params.set('remote.port', 'browser');
     if (cfg.remoteAgent) params.set('remote.agent', cfg.remoteAgent);
     if (opts.remoteText) params.set('remote.text', opts.remoteText);
 
     return `https://covers.musichoarders.xyz/?${params.toString()}`;
 }
 
-/* Page detection & artist/album extraction */
+// === Page Detection & Extraction ===
 function isUploadPath(pathname = location.pathname) {
     return /\/music\/.+\/.+\/\+images\/upload(\/|$|\?)/i.test(pathname) ||
            /\/music\/.+\/\+images\/upload(\/|$|\?)/i.test(pathname) ||
@@ -99,12 +94,12 @@ function extractArtistAlbum() {
             if (byArtistPattern.test(album)) {
                 album = album.replace(byArtistPattern, '').trim();
             } else {
-                const dashSeparatorIndex = album.indexOf(' — ');
-                if (dashSeparatorIndex !== -1) {
-                     const potentialArtistInTitle = album.substring(0, dashSeparatorIndex).trim();
-                     if (potentialArtistInTitle.toLowerCase() === artist.toLowerCase()) {
-                        album = album.substring(dashSeparatorIndex + 3).trim();
-                     }
+                const dashIdx = album.indexOf(' — ');
+                if (dashIdx !== -1) {
+                    const potentialArtist = album.substring(0, dashIdx).trim();
+                    if (potentialArtist.toLowerCase() === artist.toLowerCase()) {
+                        album = album.substring(dashIdx + 3).trim();
+                    }
                 }
             }
             return { artist, album };
@@ -113,122 +108,249 @@ function extractArtistAlbum() {
         const parts = location.pathname.split('/').filter(Boolean);
         const mi = parts.indexOf('music');
         if (mi >= 0 && parts.length > mi + 2) {
-            const d = s => { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch (e) { return s.replace(/\+/g, ' '); } };
+            const d = s => { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch { return s.replace(/\+/g, ' '); } };
             return { artist: d(parts[mi + 1]), album: d(parts[mi + 2]) };
         }
     } catch (e) {
-        console.warn('CoverFinder: Error extracting artist/album:', e);
+        if (MH_CONFIG.debug) console.warn('Error extracting artist/album:', e);
     }
     return null;
 }
 
-function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// === Cover Search Engine Page Logic ===
+const isMHPage = location.hostname === 'covers.musichoarders.xyz';
+
+if (isMHPage) {
+    (function initMHPageHandlers() {
+        const debug = new URLSearchParams(location.search).has('debug');
+
+        function getLargestImageUrl(element) {
+            if (!element) return null;
+
+            if (element.tagName === 'IMG') {
+                const img = element;
+                if (img.dataset.fullsize) return img.dataset.fullsize;
+                if (img.dataset.full) return img.dataset.full;
+                if (img.dataset.original) return img.dataset.original;
+                if (img.dataset.hires) return img.dataset.hires;
+
+                const parentLink = img.closest('a');
+                if (parentLink?.href && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(parentLink.href)) {
+                    return parentLink.href;
+                }
+
+                if (img.dataset.src) return img.dataset.src;
+
+                if (img.srcset) {
+                    const sources = img.srcset.split(',').map(s => s.trim().split(' '));
+                    let largestUrl = '', largestWidth = 0;
+                    for (const [url, descriptor] of sources) {
+                        const widthMatch = descriptor?.match(/(\d+)w/);
+                        if (widthMatch) {
+                            const width = parseInt(widthMatch[1], 10);
+                            if (width > largestWidth) {
+                                largestWidth = width;
+                                largestUrl = url;
+                            }
+                        }
+                    }
+                    if (largestUrl) return largestUrl;
+                }
+
+                return img.src;
+            }
+
+            const bgStyle = window.getComputedStyle(element);
+            if (bgStyle.backgroundImage && bgStyle.backgroundImage !== 'none') {
+                const match = bgStyle.backgroundImage.match(/url\(["']?(.+?)["']?\)/);
+                if (match?.[1]) return match[1];
+            }
+
+            const childImg = element.querySelector('img');
+            if (childImg) return getLargestImageUrl(childImg);
+
+            return null;
+        }
+
+        function setupClickHandlers() {
+            const processedElements = new Set();
+            const allImages = document.querySelectorAll('img');
+
+            allImages.forEach(img => {
+                const parentLink = img.closest('a');
+                if (parentLink && !processedElements.has(parentLink)) {
+                    processedElements.add(parentLink);
+                    attachHandlers(parentLink, img);
+                } else if (!parentLink && !processedElements.has(img)) {
+                    processedElements.add(img);
+                    attachHandlers(img, img);
+                }
+            });
+
+            function attachHandlers(clickTarget, imageElement) {
+                clickTarget.style.cursor = 'pointer';
+                imageElement.style.cursor = 'pointer';
+
+                clickTarget.querySelectorAll('*').forEach(child => {
+                    if (child !== imageElement) child.style.pointerEvents = 'none';
+                });
+
+                const hoverHandler = () => {
+                    imageElement.style.outline = '3px solid #00ff00';
+                    imageElement.style.boxShadow = '0 0 15px rgba(0,255,0,0.5)';
+                    imageElement.style.filter = 'brightness(1.1)';
+                };
+
+                const unhoverHandler = () => {
+                    if (!imageElement.dataset.selected) {
+                        imageElement.style.outline = '';
+                        imageElement.style.boxShadow = '';
+                        imageElement.style.filter = '';
+                    }
+                };
+
+                clickTarget.addEventListener('mouseenter', hoverHandler, true);
+                imageElement.addEventListener('mouseenter', hoverHandler, true);
+                clickTarget.addEventListener('mouseleave', unhoverHandler, true);
+                imageElement.addEventListener('mouseleave', unhoverHandler, true);
+
+                const handleSelection = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+
+                    const imageUrl = getLargestImageUrl(imageElement);
+
+                    if (imageUrl && window.opener && !window.opener.closed) {
+                        window.opener.postMessage({
+                            type: 'LASTFM_ARTWORK_SELECTED',
+                            url: imageUrl
+                        }, 'https://www.last.fm');
+
+                        imageElement.dataset.selected = 'true';
+                        imageElement.style.outline = '3px solid #00ff00';
+                        imageElement.style.boxShadow = '0 0 20px rgba(0,255,0,0.8)';
+
+                        try { window.opener.focus(); } catch {}
+                        setTimeout(() => window.close(), 500);
+                    }
+                    return false;
+                };
+
+                ['mousedown', 'mouseup', 'click'].forEach(eventType => {
+                    clickTarget.addEventListener(eventType, handleSelection, true);
+                    imageElement.addEventListener(eventType, handleSelection, true);
+                });
+            }
+
+            if (debug) console.log('Handlers attached to', processedElements.size, 'elements');
+        }
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#00c853 0%,#00e676 100%);color:white;text-align:center;padding:12px;z-index:999999;font-size:15px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,-apple-system,sans-serif;';
+        overlay.textContent = '✨ Click any artwork to select it for Last.fm ✨';
+        document.body.prepend(overlay);
+
+        function waitForImages(callback, maxWait = 10000) {
+            const startTime = Date.now();
+            const checkInterval = setInterval(() => {
+                const images = document.querySelectorAll('img');
+                if (images.length > 0 || Date.now() - startTime > maxWait) {
+                    clearInterval(checkInterval);
+                    callback();
+                }
+            }, 300);
+        }
+
+        waitForImages(setupClickHandlers);
+
+        new MutationObserver(() => {
+            if (document.querySelectorAll('img:not([data-mh-processed])').length > 0) {
+                setupClickHandlers();
+            }
+        }).observe(document.body, { childList: true, subtree: true });
+    })();
+
+    return;
 }
 
-// --- CRITICAL: Check if this is the Cover Search Engine puppet window ---
-const isMHPuppetWindow = window.location.origin === 'https://covers.musichoarders.xyz' &&
-                         new URLSearchParams(window.location.search).get('identifier') === 'lastfm-mh-puppet';
-
-if (isMHPuppetWindow) {
-    if (DEFAULT_CONFIG.debug) console.log('CoverFinder: Detected as Cover Search Engine puppet window.');
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(injectArtworkSelectionScript, 500);
-        });
-    } else {
-        setTimeout(injectArtworkSelectionScript, 500);
-    }
-
-    throw new Error('Puppet window - stopping Last.fm script execution');
-}
-
-// Continue with Last.fm logic below
+// === Last.fm Page Logic ===
 let currentInfo = extractArtistAlbum();
 
-/* UI: panel with controls and settings */
 function createPanel() {
-    const existingPanel = document.getElementById('mh-cover-panel');
-    if (existingPanel) {
-        existingPanel.remove();
-    }
+    $('#mh-cover-panel')?.remove();
 
     currentInfo = extractArtistAlbum();
-    if (!currentInfo) {
-        if (MH_CONFIG.debug) console.warn('CoverFinder: Cannot determine artist/album for this page.');
-        return null;
-    }
+    if (!currentInfo) return null;
 
     const panel = document.createElement('div');
     panel.id = 'mh-cover-panel';
 
-    // Theme-based colors
     const isDark = MH_CONFIG.theme === 'dark';
-    const bgColor = isDark ? '#0f1113' : '#ffffff';
-    const textColor = isDark ? '#ddd' : '#333';
-    const borderColor = isDark ? '#222' : '#ccc';
-    const headerColor = isDark ? '#fff' : '#000';
-    const inputBg = isDark ? '#111' : '#f5f5f5';
-    const inputBorder = isDark ? '#222' : '#ddd';
-    const labelColor = isDark ? '#bbb' : '#666';
-    const topBorderColor = isDark ? '#1a1a1a' : '#e0e0e0';
+    const colors = {
+        bg: isDark ? '#0f1113' : '#ffffff',
+        text: isDark ? '#ddd' : '#333',
+        border: isDark ? '#222' : '#ccc',
+        header: isDark ? '#fff' : '#000',
+        inputBg: isDark ? '#111' : '#f5f5f5',
+        inputBorder: isDark ? '#222' : '#ddd',
+        label: isDark ? '#bbb' : '#666',
+        topBorder: isDark ? '#1a1a1a' : '#e0e0e0',
+        status: isDark ? '#9aa' : '#666'
+    };
 
     Object.assign(panel.style, {
         position: 'fixed', right: '12px', top: '100px', zIndex: 2147483647,
-        background: bgColor, color: textColor, border: `1px solid ${borderColor}`, padding: '12px', borderRadius: '8px',
+        background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`,
+        padding: '12px', borderRadius: '8px',
         boxShadow: isDark ? '0 8px 30px rgba(0,0,0,0.6)' : '0 8px 30px rgba(0,0,0,0.15)',
         width: '310px', maxHeight: '85vh', overflowY: 'auto',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, Arial', fontSize: '13px'
     });
 
-    // Generate source checkboxes
-    const sourceCheckboxesHtml = ALL_SOURCES.map(source => `
+    const sourceCheckboxes = ALL_SOURCES.map(source => `
         <div style="display:flex;align-items:center;margin-bottom:4px;">
-            <input type="checkbox" id="mh-source-${source.replace(/\s/g, '_')}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;">
-            <label for="mh-source-${source.replace(/\s/g, '_')}" style="color:${labelColor};flex-grow:1;cursor:pointer;">${esc(source)}</label>
+            <input type="checkbox" id="mh-source-${source.replace(/\s/g, '_')}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;" class="mh-source-checkbox">
+            <label for="mh-source-${source.replace(/\s/g, '_')}" style="color:${colors.label};flex-grow:1;cursor:pointer;">${esc(source)}</label>
         </div>
     `).join('');
 
-
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div style="font-weight:700;color:${headerColor};font-size:15px;">Last.fm Artwork Upload Helper</div>
+            <div style="font-weight:700;color:${colors.header};font-size:15px;">Last.fm Artwork Upload Helper</div>
             <div style="display:flex;gap:4px;align-items:center;">
                 <button id="mh-settings-btn" style="background:none;border:none;color:#8a8a8a;font-size:20px;cursor:pointer;padding:0;line-height:1;width:17px;height:17px;display:flex;align-items:center;justify-content:center;">⚙️</button>
                 <button id="mh-close-btn" style="background:none;border:none;color:#8a8a8a;font-size:20px;cursor:pointer;padding:0;line-height:1;width:17px;height:17px;display:flex;align-items:center;justify-content:center;">×</button>
             </div>
         </div>
-        <div style="border-top:1px solid ${topBorderColor};padding-top:10px;">
-            <div id="mh-artist-album-info" style="margin-bottom:2px;color:${textColor};">
-                Artist: <b style="color:${headerColor}">${esc(currentInfo.artist)}</b><br>
-                Album: <b style="color:${headerColor}">${esc(currentInfo.album)}</b>
+        <div style="border-top:1px solid ${colors.topBorder};padding-top:10px;">
+            <div id="mh-artist-album-info" style="margin-bottom:10px;color:${colors.text};">
+                Artist: <b style="color:${colors.header}">${esc(currentInfo.artist)}</b><br>
+                Album: <b style="color:${colors.header}">${esc(currentInfo.album)}</b>
             </div>
-
             <div style="display:flex;gap:8px;margin-bottom:12px">
-                <button id="mh-puppet-search" style="flex:1;padding:10px 15px;border-radius:5px;background:#337ab7;color:white;border:none;font-weight:bold;cursor:pointer;">
-                    Search and Pick an Artwork
+                <button id="mh-load-images" style="flex:1;padding:10px 15px;border-radius:5px;background:#337ab7;color:white;border:none;font-weight:bold;cursor:pointer;">
+                    Open Artwork Search
                 </button>
             </div>
-
-            <div id="mh-status" style="color:${isDark ? '#9aa' : '#666'};margin-top:8px;text-align:center;">Ready for Cover Search Engine.</div>
+            <div id="mh-status" style="color:${colors.status};margin-top:8px;text-align:center;font-size:12px;">Ready to search.</div>
         </div>
-
-        <div id="mh-settings-panel" style="display:none;border-top:1px solid ${topBorderColor};padding-top:10px;margin-bottom:4px;">
-            <div style="font-weight:700;color:${headerColor};margin-bottom:10px;">Settings</div>
+        <div id="mh-settings-panel" style="display:none;border-top:1px solid ${colors.topBorder};padding-top:10px;margin-bottom:4px;">
+            <div style="font-weight:700;color:${colors.header};margin-bottom:10px;">Settings</div>
             <div style="margin-bottom:12px;">
-                <label style="display:block;margin-bottom:4px;color:${labelColor};">Sources:</label>
-                <div id="mh-sources-checkboxes" style="max-height:130px;overflow-y:auto;border:1px solid ${inputBorder};padding:4px;border-radius:4px;background:${inputBg};">
-                    ${sourceCheckboxesHtml}
+                <label style="display:block;margin-bottom:4px;color:${colors.label};">Sources: <span id="mh-source-counter" style="font-weight:bold;color:${colors.header};">0/9</span></label>
+                <div id="mh-sources-checkboxes" style="max-height:130px;overflow-y:auto;border:1px solid ${colors.inputBorder};padding:4px;border-radius:4px;background:${colors.inputBg};">
+                    ${sourceCheckboxes}
                 </div>
+                <div id="mh-source-warning" style="display:none;color:#ff6b6b;font-size:11px;margin-top:4px;">Maximum 9 sources allowed</div>
             </div>
             <div style="margin-bottom:8px;">
-                <label for="mh-res-input" style="display:block;margin-bottom:4px;color:${labelColor};">Minimal Resolution:</label>
-                <input type="number" id="mh-res-input" style="width:100%;padding:8px;border-radius:4px;background:${inputBg};border:1px solid ${inputBorder};color:${textColor};">
+                <label for="mh-res-input" style="display:block;margin-bottom:4px;color:${colors.label};">Minimal Resolution:</label>
+                <input type="number" id="mh-res-input" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};">
             </div>
             <div style="margin-bottom:8px;">
-                <label for="mh-country-select" style="display:block;margin-bottom:4px;color:${labelColor};">Country:</label>
-                <select id="mh-country-select" style="width:100%;padding:8px;border-radius:4px;background:${inputBg};border:1px solid ${inputBorder};color:${textColor};cursor:pointer;">
+                <label for="mh-country-select" style="display:block;margin-bottom:4px;color:${colors.label};">Country:</label>
+                <select id="mh-country-select" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};cursor:pointer;">
                     <option value="au">Australia</option>
                     <option value="br">Brazil</option>
                     <option value="ca">Canada</option>
@@ -246,8 +368,8 @@ function createPanel() {
                 </select>
             </div>
             <div style="margin-bottom:8px;">
-                <label for="mh-theme-select" style="display:block;margin-bottom:4px;color:${labelColor};">Theme:</label>
-                <select id="mh-theme-select" style="width:100%;padding:8px;border-radius:4px;background:${inputBg};border:1px solid ${inputBorder};color:${textColor};cursor:pointer;">
+                <label for="mh-theme-select" style="display:block;margin-bottom:4px;color:${colors.label};">Theme:</label>
+                <select id="mh-theme-select" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};cursor:pointer;">
                     <option value="dark">Dark Mode</option>
                     <option value="light">Light Mode</option>
                 </select>
@@ -257,23 +379,17 @@ function createPanel() {
     `;
     document.body.appendChild(panel);
 
-    $('#mh-puppet-search').addEventListener('click', openPuppetSearch);
+    $('#mh-load-images').addEventListener('click', loadCoverImages);
     $('#mh-settings-btn').addEventListener('click', toggleSettingsPanel);
     $('#mh-save-settings').addEventListener('click', saveAndCloseSettings);
-    $('#mh-close-btn').addEventListener('click', () => {
-        panel.remove();
-    });
+    $('#mh-close-btn').addEventListener('click', () => panel.remove());
 
     return panel;
 }
 
-/* Settings Panel Logic */
 function toggleSettingsPanel() {
     const settingsPanel = $('#mh-settings-panel');
-    const searchBtn = $('#mh-puppet-search');
-    const statusEl = $('#mh-status');
-    const artistAlbumInfo = $('#mh-artist-album-info');
-    const mainContent = artistAlbumInfo?.parentElement;
+    const mainContent = $('#mh-artist-album-info')?.parentElement;
 
     if (settingsPanel.style.display === 'none') {
         loadSettingsIntoPanel();
@@ -286,201 +402,209 @@ function toggleSettingsPanel() {
 }
 
 function loadSettingsIntoPanel() {
-    // Populate checkboxes based on current config
     ALL_SOURCES.forEach(source => {
         const checkbox = $(`#mh-source-${source.replace(/\s/g, '_')}`);
-        if (checkbox) {
-            checkbox.checked = MH_CONFIG.sources.includes(source);
-        }
+        if (checkbox) checkbox.checked = MH_CONFIG.sources.includes(source);
     });
-
     $('#mh-country-select').value = MH_CONFIG.country;
     $('#mh-res-input').value = MH_CONFIG.resolution;
     $('#mh-theme-select').value = MH_CONFIG.theme;
+
+    updateSourceCounter();
+    setupSourceCheckboxListeners();
+}
+
+function updateSourceCounter() {
+    const counter = $('#mh-source-counter');
+    const warning = $('#mh-source-warning');
+    if (!counter) return;
+
+    const checkedCount = document.querySelectorAll('#mh-sources-checkboxes input[name="mh-sources"]:checked').length;
+    counter.textContent = `${checkedCount}/9`;
+
+    if (warning) {
+        warning.style.display = checkedCount > 9 ? 'block' : 'none';
+    }
+
+    // Disable unchecked checkboxes if we're at the limit
+    const allCheckboxes = document.querySelectorAll('#mh-sources-checkboxes input[name="mh-sources"]');
+    if (checkedCount >= 9) {
+        allCheckboxes.forEach(cb => {
+            if (!cb.checked) {
+                cb.disabled = true;
+                cb.style.cursor = 'not-allowed';
+                cb.nextElementSibling.style.opacity = '0.5';
+                cb.nextElementSibling.style.cursor = 'not-allowed';
+            }
+        });
+    } else {
+        allCheckboxes.forEach(cb => {
+            cb.disabled = false;
+            cb.style.cursor = 'pointer';
+            cb.nextElementSibling.style.opacity = '1';
+            cb.nextElementSibling.style.cursor = 'pointer';
+        });
+    }
+}
+
+function setupSourceCheckboxListeners() {
+    const checkboxes = document.querySelectorAll('#mh-sources-checkboxes input[name="mh-sources"]');
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateSourceCounter);
+    });
 }
 
 async function saveAndCloseSettings() {
-    // Read selected sources from checkboxes
-    const selectedSources = Array.from(document.querySelectorAll('#mh-sources-checkboxes input[name="mh-sources"]:checked'))
-                                 .map(checkbox => checkbox.value);
-    MH_CONFIG.sources = selectedSources;
+    const checkedSources = Array.from(document.querySelectorAll('#mh-sources-checkboxes input[name="mh-sources"]:checked'))
+        .map(cb => cb.value);
 
+    if (checkedSources.length > 9) {
+        alert('Please select a maximum of 9 sources.');
+        return;
+    }
+
+    MH_CONFIG.sources = checkedSources;
     MH_CONFIG.country = $('#mh-country-select').value;
     MH_CONFIG.resolution = $('#mh-res-input').value.trim();
-
-    const oldTheme = MH_CONFIG.theme;
     MH_CONFIG.theme = $('#mh-theme-select').value;
 
     await saveConfig();
 
-    // Always recreate panel to apply theme changes
-    const panel = document.getElementById('mh-cover-panel');
+    const panel = $('#mh-cover-panel');
     if (panel) {
         panel.remove();
         setTimeout(() => {
             const newPanel = createPanel();
-            if (newPanel) {
-                const statusEl = $('#mh-status');
-                if (statusEl) statusEl.textContent = 'Settings saved!';
-            }
+            if (newPanel) $('#mh-status').textContent = 'Settings saved!';
         }, 100);
     }
 }
 
-/* Puppet Search Logic */
-function openPuppetSearch() {
+async function loadCoverImages() {
     if (!currentInfo) {
         alert('Cannot determine artist/album info for this page.');
         return;
     }
-    const url = buildMhUrl(currentInfo, { remote: true, remoteText: `Pick cover for ${currentInfo.artist} — ${currentInfo.album}` });
 
-    // Store Last.fm tab reference before opening new window
-    if (typeof GM_setValue === 'function') {
-        GM_setValue('lastfm_tab_id', window.name || 'lastfm-main-tab');
-        if (!window.name) {
-            window.name = 'lastfm-main-tab';
-        }
-    }
+    const statusEl = $('#mh-status');
+    const loadBtn = $('#mh-load-images');
 
-    window.open(url, '_blank');
-    $('#mh-status').textContent = 'Cover Search Engine opened. Pick an artwork.';
-}
+    if (statusEl) statusEl.textContent = 'Opening Cover Search Engine...';
+    if (loadBtn) loadBtn.disabled = true;
 
-/* Communication with Puppet Window */
-window.addEventListener('message', async function(event) {
-    if (event.origin !== 'https://covers.musichoarders.xyz') {
+    const url = buildMhUrl(currentInfo, {
+        remoteText: `Pick artwork for ${currentInfo.artist} - ${currentInfo.album}`
+    });
+
+    const popupWidth = 1000, popupHeight = 800;
+    const left = (screen.width - popupWidth) / 2;
+    const top = (screen.height - popupHeight) / 2;
+
+    const popup = window.open(url, 'CoverSearchEngine',
+        `width=${popupWidth},height=${popupHeight},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+
+    if (!popup) {
+        if (statusEl) statusEl.textContent = 'Failed to open popup. Please allow popups.';
+        if (loadBtn) loadBtn.disabled = false;
         return;
     }
 
-    if (MH_CONFIG.debug) console.log('Received message from Cover Search Engine:', event.data);
+    if (statusEl) statusEl.textContent = 'Search opened, pick an artwork.';
+    if (loadBtn) {
+        loadBtn.textContent = 'Reopen Artwork Search';
+        loadBtn.disabled = false;
+    }
+}
 
-    if (event.data && event.data.name === 'artworkSelected' && event.data.data && event.data.data.url) {
-        const artworkUrl = event.data.data.url;
-        const releaseDate = event.data.data.releaseDate || null;
+window.addEventListener('message', async (event) => {
+    if (event.origin !== 'https://covers.musichoarders.xyz') return;
+
+    if (event.data?.type === 'LASTFM_ARTWORK_SELECTED' && event.data.url) {
         const statusEl = $('#mh-status');
-        if (statusEl) statusEl.textContent = 'Artwork selected! Downloading and setting...';
-
-        // Focus this window (Firefox fix)
-        window.focus();
+        if (statusEl) statusEl.textContent = 'Artwork selected! Setting up...';
 
         try {
             const fileInput = await findLastFmFileInput();
-
-            if (fileInput) {
-                if (MH_CONFIG.debug) console.log('Found Last.fm file input:', fileInput);
-                const file = await downloadImageAsFile(artworkUrl);
-
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-
-                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-                // Fill in Title and Description fields
-                await fillLastFmMetadata(releaseDate);
-
-                if (statusEl) statusEl.textContent = '✓ Artwork set! You can now upload on Last.fm.';
-                if (MH_CONFIG.debug) console.log('Artwork successfully set to file input.');
-            } else {
-                const errMsg = 'Last.fm upload input not found. Please ensure the upload dialog is open.';
+            if (!fileInput) {
+                const errMsg = 'Upload input not found. Please ensure the upload dialog is open.';
                 if (statusEl) statusEl.textContent = errMsg;
-                console.error('CoverFinder:', errMsg);
-                if (confirm('Could not auto-fill. Open artwork URL in new tab?')) {
-                    window.open(artworkUrl, '_blank');
-                }
+                return;
             }
+
+            const file = await downloadImageAsFile(event.data.url);
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            fileInput.files = dataTransfer.files;
+
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            // Fill metadata for the current page only when artwork is selected
+            await fillLastFmMetadata(currentInfo);
+
+            if (statusEl) statusEl.textContent = '✓ Artwork set! You can now upload.';
         } catch (e) {
-            console.error('CoverFinder: Failed to set artwork:', e);
+            console.error('Failed to set artwork:', e);
             if (statusEl) statusEl.textContent = `Error: ${e.message}`;
-            if (confirm('Error setting artwork. Open URL in new tab?')) {
-                window.open(artworkUrl, '_blank');
-            }
         }
     }
 });
 
-async function fillLastFmMetadata(releaseDate) {
+async function fillLastFmMetadata() {
     try {
-        // Wait a bit for the form to be ready
         await sleep(500);
+        const pageInfo = extractArtistAlbum();
+        if (!pageInfo) return;
 
-        // Find Title field (id="id_title" or name="title")
-        const titleInput = document.querySelector('input#id_title[name="title"], input[name="title"]');
+        const titleInput = $('input#id_title[name="title"], input[name="title"]');
+        const descInput = $('textarea#id_description[name="description"], textarea[name="description"]');
 
-        // Find Description field (id="id_description" or name="description")
-        const descriptionInput = document.querySelector('textarea#id_description[name="description"], textarea[name="description"]');
-
-        if (currentInfo && titleInput) {
-            const titleValue = `${currentInfo.artist} - ${currentInfo.album}`;
+        if (titleInput) {
+            const titleValue = `${pageInfo.artist} - ${pageInfo.album}`;
             titleInput.value = titleValue;
             titleInput.dispatchEvent(new Event('input', { bubbles: true }));
             titleInput.dispatchEvent(new Event('change', { bubbles: true }));
-            if (MH_CONFIG.debug) console.log('CoverFinder: Set title to:', titleValue);
         }
 
-        if (descriptionInput) {
-            let descValue = '';
-            if (releaseDate) {
-                descValue = `Released: ${releaseDate}`;
-            } else {
-                // Fallback description if no release date
-                descValue = `Album artwork for ${currentInfo.album} by ${currentInfo.artist}`;
-            }
-            descriptionInput.value = descValue;
-            descriptionInput.dispatchEvent(new Event('input', { bubbles: true }));
-            descriptionInput.dispatchEvent(new Event('change', { bubbles: true }));
-            if (MH_CONFIG.debug) console.log('CoverFinder: Set description to:', descValue);
+        if (descInput) {
+            const descValue = `Artwork of "${pageInfo.album}" by ${pageInfo.artist}`;
+            descInput.value = descValue;
+            descInput.dispatchEvent(new Event('input', { bubbles: true }));
+            descInput.dispatchEvent(new Event('change', { bubbles: true }));
         }
     } catch (e) {
-        console.warn('CoverFinder: Error filling metadata fields:', e);
+        if (MH_CONFIG.debug) console.warn('Error filling metadata:', e);
     }
 }
 
 async function findLastFmFileInput(timeout = 10000) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
-        const fileInput = document.querySelector('input#id_image[type="file"][name="image"]');
-
-        if (fileInput && fileInput.offsetParent !== null) {
-            if (MH_CONFIG.debug) console.log('Found Last.fm file input:', fileInput);
-            return fileInput;
-        }
+        const fileInput = $('input#id_image[type="file"][name="image"]');
+        if (fileInput?.offsetParent !== null) return fileInput;
         await sleep(500);
     }
-    if (MH_CONFIG.debug) console.warn('findLastFmFileInput: File input not found within timeout.');
     return null;
 }
 
 function getExtensionFromUrl(url) {
     try {
-        const urlParts = url.split('?')[0].split('.');
-        if (urlParts.length > 1) {
-            const extension = urlParts[urlParts.length - 1].toLowerCase();
-            // Common image extensions
-            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg'].includes(extension)) {
-                return extension;
-            }
+        const parts = url.split('?')[0].split('.');
+        if (parts.length > 1) {
+            const ext = parts[parts.length - 1].toLowerCase();
+            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg'].includes(ext)) return ext;
         }
-    } catch (e) {
-        console.warn('Error extracting extension from URL:', e);
-    }
+    } catch {}
     return null;
 }
 
 function getExtensionFromMime(mime) {
-    const mimeToExt = {
-        'image/jpeg': 'jpg',
-        'image/jpg': 'jpg',
-        'image/png': 'png',
-        'image/gif': 'gif',
-        'image/webp': 'webp',
-        'image/bmp': 'bmp',
-        'image/tiff': 'tiff',
-        'image/svg+xml': 'svg'
+    const map = {
+        'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+        'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp',
+        'image/tiff': 'tiff', 'image/svg+xml': 'svg'
     };
-    return mimeToExt[mime.toLowerCase()] || null;
+    return map[mime.toLowerCase()] || null;
 }
 
 function downloadImageAsFile(url) {
@@ -490,332 +614,64 @@ function downloadImageAsFile(url) {
                 method: 'GET',
                 url: url,
                 responseType: 'arraybuffer',
-                onload: function (res) {
+                onload: (res) => {
                     try {
-                        const arr = res.response;
                         const hdrs = res.responseHeaders || '';
                         const m = hdrs.match(/content-type:\s*([^\r\n;]+)/i);
-                        const mime = (m && m[1]) || 'image/jpeg';
+                        const mime = m?.[1] || 'image/jpeg';
+                        const ext = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
+                        const fileName = `Uploaded With Last.fm Artwork Upload Helper.${ext}`;
+                        const blob = new Blob([res.response], { type: mime });
 
-                        // Try to get extension from URL first, then from MIME type
-                        let extension = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
-
-                        const baseFileName = "Uploaded With Last.fm Artwork Upload Helper";
-                        const fileName = `${baseFileName}.${extension}`;
-
-                        const blob = new Blob([arr], { type: mime });
-
-                        let file;
-                        try { file = new File([blob], fileName, { type: mime }); }
-                        catch (e) {
-                            file = blob;
-                            file.name = fileName;
-                            file.type = mime;
+                        try {
+                            resolve(new File([blob], fileName, { type: mime }));
+                        } catch {
+                            blob.name = fileName;
+                            blob.type = mime;
+                            resolve(blob);
                         }
-                        resolve(file);
                     } catch (e) {
-                        console.error('Error processing GM_xmlhttpRequest response:', e);
                         reject(e);
                     }
                 },
-                onerror: function (err) {
-                    console.error('GM_xmlhttpRequest error:', err);
-                    reject(new Error(`Failed to download image: ${err.status || 'network error'}`));
-                },
-                ontimeout: function () {
-                    reject(new Error('Image download timed out.'));
-                }
+                onerror: (err) => reject(new Error(`Failed to download: ${err.status || 'network error'}`)),
+                ontimeout: () => reject(new Error('Download timed out'))
             });
         } else {
-            fetch(url, { credentials: 'omit' }).then(r => {
-                if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
-                return r.blob();
-            }).then(blob => {
-                const mime = blob.type || 'image/jpeg';
+            fetch(url, { credentials: 'omit' })
+                .then(r => r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`)))
+                .then(blob => {
+                    const mime = blob.type || 'image/jpeg';
+                    const ext = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
+                    const fileName = `Uploaded With Last.fm Artwork Upload Helper.${ext}`;
 
-                // Try to get extension from URL first, then from MIME type
-                let extension = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
-
-                const baseFileName = "Uploaded With Last.fm Artwork Upload Helper";
-                const fileName = `${baseFileName}.${extension}`;
-
-                let file;
-                try { file = new File([blob], fileName, { type: mime }); }
-                catch (e) {
-                    file = blob;
-                    file.name = fileName;
-                    file.type = mime;
-                }
-                resolve(file);
-            }).catch(e => {
-                console.error('Fetch API error:', e);
-                reject(new Error(`Failed to download: ${e.message}`));
-            });
+                    try {
+                        resolve(new File([blob], fileName, { type: mime }));
+                    } catch {
+                        blob.name = fileName;
+                        blob.type = mime;
+                        resolve(blob);
+                    }
+                })
+                .catch(e => reject(new Error(`Failed to download: ${e.message}`)));
         }
     });
 }
 
-// --- Function to inject script into the puppet window ---
-function injectArtworkSelectionScript() {
-    const debug = DEFAULT_CONFIG.debug;
-    if (debug) console.log('Cover Search Engine Puppet: Injecting selection script...');
-
-    const scriptContent = `
-        (function() {
-            const debug = ${debug};
-            const targetOrigin = 'https://www.last.fm';
-
-            if (debug) console.log('MH Puppet: Script starting, waiting for images...');
-
-            function waitForImages(callback, maxWait = 10000) {
-                const startTime = Date.now();
-                const checkInterval = setInterval(() => {
-                    const images = document.querySelectorAll('img[src*="cover"], img[src*="album"], img[src*="artwork"], .cover img, .album-art img, a > img, button img');
-
-                    if (images.length > 0 || Date.now() - startTime > maxWait) {
-                        clearInterval(checkInterval);
-                        if (debug) console.log('MH Puppet: Found', images.length, 'potential artwork images');
-                        callback();
-                    }
-                }, 300);
-            }
-
-            function getLargestImageUrl(element) {
-                if (!element) return null;
-
-                if (element.tagName === 'IMG') {
-                    const img = element;
-
-                    if (img.dataset.fullsize) return img.dataset.fullsize;
-                    if (img.dataset.full) return img.dataset.full;
-                    if (img.dataset.original) return img.dataset.original;
-                    if (img.dataset.hires) return img.dataset.hires;
-
-                    const parentLink = img.closest('a');
-                    if (parentLink && parentLink.href) {
-                        if (/\\.(jpg|jpeg|png|webp|gif)(\\?|$)/i.test(parentLink.href)) {
-                            return parentLink.href;
-                        }
-                    }
-
-                    if (img.dataset.src) return img.dataset.src;
-
-                    if (img.srcset) {
-                        const sources = img.srcset.split(',').map(s => s.trim().split(' '));
-                        let largestUrl = '';
-                        let largestWidth = 0;
-                        for (const source of sources) {
-                            const url = source[0];
-                            const widthMatch = source[1] ? source[1].match(/(\\d+)w/) : null;
-                            if (widthMatch) {
-                                const width = parseInt(widthMatch[1], 10);
-                                if (width > largestWidth) {
-                                    largestWidth = width;
-                                    largestUrl = url;
-                                }
-                            }
-                        }
-                        if (largestUrl) return largestUrl;
-                    }
-
-                    let imgSrc = img.src;
-                    imgSrc = imgSrc.replace(/\\._[A-Z]{2}\\d+_\\./, '.');
-                    imgSrc = imgSrc.replace(/\\._AC_UL\\d+_\\./, '.');
-                    imgSrc = imgSrc.replace(/\\/image\\/[a-f0-9]+\\/\\d+x\\d+/, (match) => {
-                        return match.replace(/\\/\\d+x\\d+/, '');
-                    });
-
-                    return imgSrc;
-                }
-
-                const bgStyle = window.getComputedStyle(element);
-                if (bgStyle.backgroundImage && bgStyle.backgroundImage !== 'none') {
-                    const match = bgStyle.backgroundImage.match(/url\\(["']?(.+?)["']?\\)/);
-                    if (match && match[1]) return match[1];
-                }
-
-                const childImg = element.querySelector('img');
-                if (childImg) return getLargestImageUrl(childImg);
-
-                return null;
-            }
-
-            function setupClickHandlers() {
-                // AGGRESSIVE APPROACH: Add a global click interceptor
-                document.addEventListener('click', function(e) {
-                    // Check if the click target is or contains an image
-                    let targetImg = null;
-
-                    if (e.target.tagName === 'IMG') {
-                        targetImg = e.target;
-                    } else {
-                        targetImg = e.target.querySelector('img');
-                    }
-
-                    if (targetImg) {
-                        // STOP EVERYTHING
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-
-                        const imageUrl = getLargestImageUrl(targetImg);
-
-                        // Try to extract release date from the page
-                        let releaseDate = null;
-                        try {
-                            const dateElements = document.querySelectorAll('[data-date], [data-release], [data-year], td, dd, p, span, div');
-                            for (const elem of dateElements) {
-                                const text = elem.textContent || elem.innerText || '';
-                                const datePatterns = [
-                                    /(?:^|\\s)(\\d{4}-\\d{2}-\\d{2})(?:\\s|$)/,
-                                    /(?:^|\\s)(\\d{1,2}\\.\\d{1,2}\\.\\d{4})(?:\\s|$)/,
-                                    /(?:^|\\s)(\\d{1,2}\\/\\d{1,2}\\/\\d{4})(?:\\s|$)/,
-                                    /(?:^|\\s)([A-Z][a-z]+ \\d{1,2},? \\d{4})(?:\\s|$)/,
-                                    /(?:^|\\s)(\\d{1,2} [A-Z][a-z]+ \\d{4})(?:\\s|$)/,
-                                    /(?:^|\\s)(\\d{4})(?:\\s|$)/
-                                ];
-
-                                for (const pattern of datePatterns) {
-                                    const match = text.match(pattern);
-                                    if (match && match[1]) {
-                                        const potentialDate = match[1].trim();
-                                        if (/19\\d{2}|20\\d{2}/.test(potentialDate)) {
-                                            releaseDate = potentialDate;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (releaseDate) break;
-                            }
-
-                            if (!releaseDate) {
-                                const metaDate = document.querySelector('meta[property="music:release_date"], meta[name="music:release_date"], meta[property="release_date"]');
-                                if (metaDate && metaDate.content) {
-                                    releaseDate = metaDate.content;
-                                }
-                            }
-
-                            if (debug && releaseDate) console.log('MH Puppet: Found release date:', releaseDate);
-                        } catch (err) {
-                            if (debug) console.warn('MH Puppet: Error extracting release date:', err);
-                        }
-
-                        if (imageUrl && window.opener && !window.opener.closed) {
-                            if (debug) console.log('MH Puppet: Sending artwork URL:', imageUrl, 'with release date:', releaseDate);
-
-                            window.opener.postMessage({
-                                name: 'artworkSelected',
-                                data: {
-                                    url: imageUrl,
-                                    releaseDate: releaseDate
-                                }
-                            }, targetOrigin);
-
-                            targetImg.dataset.selected = 'true';
-                            targetImg.style.outline = '3px solid #00ff00 !important';
-                            targetImg.style.boxShadow = '0 0 20px rgba(0,255,0,0.5) !important';
-
-                            try {
-                                window.opener.focus();
-                            } catch (e) {
-                                if (debug) console.warn('Could not focus opener:', e);
-                            }
-
-                            setTimeout(() => window.close(), 500);
-                        } else {
-                            if (debug) console.warn('MH Puppet: Could not extract image URL or no opener');
-                        }
-
-                        return false;
-                    }
-                }, true); // Use capture phase
-
-                // Also block mousedown and mouseup on all images
-                document.addEventListener('mousedown', function(e) {
-                    if (e.target.tagName === 'IMG' || e.target.querySelector('img')) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                    }
-                }, true);
-
-                document.addEventListener('mouseup', function(e) {
-                    if (e.target.tagName === 'IMG' || e.target.querySelector('img')) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                    }
-                }, true);
-
-                // Add visual feedback to all images
-                const allImages = document.querySelectorAll('img');
-                allImages.forEach(img => {
-                    img.style.cursor = 'pointer';
-
-                    img.addEventListener('mouseenter', function() {
-                        if (!this.dataset.selected) {
-                            this.style.outline = '3px solid #00ff00 !important';
-                            this.style.boxShadow = '0 0 15px rgba(0,255,0,0.5) !important';
-                            this.style.filter = 'brightness(1.1)';
-                        }
-                    });
-
-                    img.addEventListener('mouseleave', function() {
-                        if (!this.dataset.selected) {
-                            this.style.outline = '';
-                            this.style.boxShadow = '';
-                            this.style.filter = '';
-                        }
-                    });
-                });
-
-                if (debug) console.log('MH Puppet: Global click interceptor installed for', allImages.length, 'images');
-            }
-
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg, #00c853 0%, #00e676 100%);color:white;text-align:center;padding:12px;z-index:999999;font-size:15px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,-apple-system,sans-serif;';
-            overlay.innerHTML = '✨ Click any artwork to select it for Last.fm ✨';
-            document.body.prepend(overlay);
-
-            waitForImages(setupClickHandlers);
-
-            if (debug) console.log('MH Puppet: Script fully initialized');
-        })();
-    `;
-
-    const scriptElement = document.createElement('script');
-    scriptElement.textContent = scriptContent;
-    scriptElement.id = 'mh-puppet-injector-script';
-    document.head.appendChild(scriptElement);
-
-    if (debug) console.log('Cover Search Engine Puppet: Script injected into page');
-}
-
-/* init */
+// === Initialization ===
 (async () => {
     await loadConfig();
 
     function checkAndCreatePanel() {
-        const currentlyOnUploadPath = isUploadPath();
-        const panelExists = !!document.getElementById('mh-cover-panel');
+        const onUploadPath = isUploadPath();
+        const panelExists = !!$('#mh-cover-panel');
 
-        if (currentlyOnUploadPath && !panelExists) {
+        if (onUploadPath && !panelExists) {
             setTimeout(() => {
-                if (isUploadPath()) {
-                    const panel = createPanel();
-                    if (MH_CONFIG.debug && panel) {
-                        console.log('CoverFinder: Panel created for upload page');
-                    } else if (MH_CONFIG.debug && !panel) {
-                        console.log('CoverFinder: Could not create panel (missing artist/album info)');
-                    }
-                }
+                if (isUploadPath()) createPanel();
             }, 500);
-        } else if (!currentlyOnUploadPath && panelExists) {
-            const existingPanel = document.getElementById('mh-cover-panel');
-            if (existingPanel) {
-                existingPanel.remove();
-                if (MH_CONFIG.debug) console.log('CoverFinder: Panel removed (not on upload page)');
-            }
+        } else if (!onUploadPath && panelExists) {
+            $('#mh-cover-panel')?.remove();
         }
     }
 
@@ -823,18 +679,13 @@ function injectArtworkSelectionScript() {
 
     let lastUrl = location.href;
     new MutationObserver(() => {
-        const currentUrl = location.href;
-        if (currentUrl !== lastUrl) {
-            lastUrl = currentUrl;
-            if (MH_CONFIG.debug) console.log('CoverFinder: URL changed to', currentUrl);
+        if (location.href !== lastUrl) {
+            lastUrl = location.href;
             checkAndCreatePanel();
         }
     }).observe(document.body, { subtree: true, childList: true });
 
-    window.addEventListener('popstate', () => {
-        if (MH_CONFIG.debug) console.log('CoverFinder: Popstate event detected');
-        checkAndCreatePanel();
-    });
+    window.addEventListener('popstate', checkAndCreatePanel);
 
     window._CoverFinder = {
         buildMhUrl: () => {
@@ -844,15 +695,8 @@ function injectArtworkSelectionScript() {
         config: MH_CONFIG,
         saveConfig,
         loadConfig,
-        findLastFmFileInput,
-        downloadImageAsFile,
         createPanel
     };
-
-    if (MH_CONFIG.debug) console.log('CoverFinder Initialized:', {
-        isUploadPath: isUploadPath(),
-        currentUrl: location.href
-    });
 })();
 
 })();
