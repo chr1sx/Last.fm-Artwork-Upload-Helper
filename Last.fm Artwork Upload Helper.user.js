@@ -22,7 +22,7 @@
 const DEFAULT_CONFIG = {
     theme: 'dark',
     resolution: '0',
-    sources: ['Bandcamp', 'Deezer', 'Discogs', 'Spotify', 'Qobuz', 'Tidal'],
+    sources: ['Bandcamp', 'Deezer', 'Discogs', 'Spotify', 'Qobuz'],
     country: 'us',
     remoteAgent: 'lastfm-mh-integration/3.4',
     debug: false
@@ -789,3 +789,4 @@ function downloadImageAsFile(url) {
 })();
 
 })();
+
