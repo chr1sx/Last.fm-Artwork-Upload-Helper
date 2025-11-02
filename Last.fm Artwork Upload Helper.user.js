@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.2
+// @version      1.0.3
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
@@ -123,6 +123,7 @@ const isMHPage = location.hostname === 'covers.musichoarders.xyz';
 if (isMHPage) {
     (function initMHPageHandlers() {
         const debug = new URLSearchParams(location.search).has('debug');
+        const imageSizeCache = new Map();
 
         function getLargestImageUrl(element) {
             if (!element) return null;
@@ -172,6 +173,69 @@ if (isMHPage) {
             return null;
         }
 
+        async function checkImageSize(url) {
+            if (imageSizeCache.has(url)) {
+                return imageSizeCache.get(url);
+            }
+
+            return new Promise((resolve) => {
+                if (typeof GM_xmlhttpRequest === 'function') {
+                    GM_xmlhttpRequest({
+                        method: 'HEAD',
+                        url: url,
+                        onload: (response) => {
+                            const contentLength = response.responseHeaders.match(/content-length:\s*(\d+)/i);
+                            const sizeInMB = contentLength ? parseInt(contentLength[1]) / (1024 * 1024) : 0;
+                            imageSizeCache.set(url, sizeInMB);
+                            resolve(sizeInMB);
+                        },
+                        onerror: () => {
+                            imageSizeCache.set(url, 0);
+                            resolve(0);
+                        },
+                        ontimeout: () => {
+                            imageSizeCache.set(url, 0);
+                            resolve(0);
+                        }
+                    });
+                } else {
+                    fetch(url, { method: 'HEAD' })
+                        .then(response => {
+                            const contentLength = response.headers.get('content-length');
+                            const sizeInMB = contentLength ? parseInt(contentLength) / (1024 * 1024) : 0;
+                            imageSizeCache.set(url, sizeInMB);
+                            resolve(sizeInMB);
+                        })
+                        .catch(() => {
+                            imageSizeCache.set(url, 0);
+                            resolve(0);
+                        });
+                }
+            });
+        }
+
+        function createSizeWarningBadge(sizeInMB) {
+            const badge = document.createElement('div');
+            badge.className = 'mh-size-warning';
+            badge.style.cssText = `
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                background: rgba(255, 107, 107, 0.95);
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: bold;
+                z-index: 1000;
+                pointer-events: none;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            `;
+            badge.textContent = `⚠️ ${sizeInMB.toFixed(1)}MB`;
+            badge.title = 'This image may exceed Last.fm\'s 5MB limit';
+            return badge;
+        }
+
         function setupClickHandlers() {
             const processedElements = new Set();
             const allImages = document.querySelectorAll('img');
@@ -191,14 +255,31 @@ if (isMHPage) {
                 clickTarget.style.cursor = 'pointer';
                 imageElement.style.cursor = 'pointer';
 
+                // Make clickTarget position relative for badge positioning
+                if (getComputedStyle(clickTarget).position === 'static') {
+                    clickTarget.style.position = 'relative';
+                }
+
                 clickTarget.querySelectorAll('*').forEach(child => {
                     if (child !== imageElement) child.style.pointerEvents = 'none';
                 });
 
-                const hoverHandler = () => {
+                const hoverHandler = async () => {
                     imageElement.style.outline = '3px solid #00ff00';
                     imageElement.style.boxShadow = '0 0 15px rgba(0,255,0,0.5)';
                     imageElement.style.filter = 'brightness(1.1)';
+
+                    // Check image size on hover if not already checked
+                    if (!clickTarget.querySelector('.mh-size-warning')) {
+                        const imageUrl = getLargestImageUrl(imageElement);
+                        if (imageUrl) {
+                            const sizeInMB = await checkImageSize(imageUrl);
+                            if (sizeInMB > 5) {
+                                const badge = createSizeWarningBadge(sizeInMB);
+                                clickTarget.appendChild(badge);
+                            }
+                        }
+                    }
                 };
 
                 const unhoverHandler = () => {
@@ -493,7 +574,7 @@ async function loadCoverImages() {
     if (loadBtn) loadBtn.disabled = true;
 
     const url = buildMhUrl(currentInfo, {
-        remoteText: `Pick artwork for ${currentInfo.artist} - ${currentInfo.album}`
+        remoteText: `Pick an artwork for ${currentInfo.artist} - ${currentInfo.album}`
     });
 
     const popupWidth = 1000, popupHeight = 800;
