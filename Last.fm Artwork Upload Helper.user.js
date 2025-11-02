@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.3
+// @version      1.0.4
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
@@ -11,6 +11,8 @@
 // @connect      covers.musichoarders.xyz
 // @run-at       document-idle
 // @license      MIT
+// @downloadURL https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.user.js
+// @updateURL https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.meta.js
 // ==/UserScript==
 
 (function () {
@@ -53,6 +55,12 @@ async function saveConfig() {
 async function loadConfig() {
     const storedConfig = await GM_getValue('mh_config');
     MH_CONFIG = storedConfig ? Object.assign({}, DEFAULT_CONFIG, JSON.parse(storedConfig)) : Object.assign({}, DEFAULT_CONFIG);
+
+    // Ensure country is always set (for first-time users)
+    if (!MH_CONFIG.country) {
+        MH_CONFIG.country = DEFAULT_CONFIG.country;
+    }
+
     if (!storedConfig) await saveConfig();
 }
 
@@ -385,14 +393,14 @@ function createPanel() {
         background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`,
         padding: '12px', borderRadius: '8px',
         boxShadow: isDark ? '0 8px 30px rgba(0,0,0,0.6)' : '0 8px 30px rgba(0,0,0,0.15)',
-        width: '310px', maxHeight: '85vh', overflowY: 'auto',
+        width: '312px', maxHeight: '85vh', overflowY: 'auto', overflowX: 'hidden',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, Arial', fontSize: '13px'
     });
 
     const sourceCheckboxes = ALL_SOURCES.map(source => `
         <div style="display:flex;align-items:center;margin-bottom:4px;">
-            <input type="checkbox" id="mh-source-${source.replace(/\s/g, '_')}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;" class="mh-source-checkbox">
-            <label for="mh-source-${source.replace(/\s/g, '_')}" style="color:${colors.label};flex-grow:1;cursor:pointer;">${esc(source)}</label>
+            <input type="checkbox" id="mh-source-${source.replace(/\s/g, '_')}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;accent-color:#337ab7;" class="mh-source-checkbox">
+            <label for="mh-source-${source.replace(/\s/g, '_')}" style="color:${colors.label};flex-grow:1;cursor:pointer;text-align:left;">${esc(source)}</label>
         </div>
     `).join('');
 
@@ -431,7 +439,7 @@ function createPanel() {
             </div>
             <div style="margin-bottom:8px;">
                 <label for="mh-country-select" style="display:block;margin-bottom:4px;color:${colors.label};">Country:</label>
-                <select id="mh-country-select" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};cursor:pointer;">
+                <select id="mh-country-select" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};cursor:pointer;outline:none;">
                     <option value="au">Australia</option>
                     <option value="br">Brazil</option>
                     <option value="ca">Canada</option>
@@ -450,7 +458,7 @@ function createPanel() {
             </div>
             <div style="margin-bottom:8px;">
                 <label for="mh-theme-select" style="display:block;margin-bottom:4px;color:${colors.label};">Theme:</label>
-                <select id="mh-theme-select" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};cursor:pointer;">
+                <select id="mh-theme-select" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};cursor:pointer;outline:none;">
                     <option value="dark">Dark Mode</option>
                     <option value="light">Light Mode</option>
                 </select>
