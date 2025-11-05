@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.4
+// @version      1.0.6
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
@@ -91,6 +91,7 @@ function isUploadPath(pathname = location.pathname) {
 
 function extractArtistAlbum() {
     try {
+        // First try to get from meta tags (already properly decoded by browser)
         const metaArtist = document.querySelector('meta[property="music:musician"], meta[name="music:musician"]')?.content;
         const metaOgTitle = document.querySelector('meta[property="og:title"], meta[name="og:title"]')?.content;
 
@@ -113,10 +114,34 @@ function extractArtistAlbum() {
             return { artist, album };
         }
 
+        // Fallback to URL parsing only if meta tags aren't available
+        // Try to get from page heading elements
+        const artistLink = document.querySelector('a.header-new-crumb[href*="/music/"]');
+        const albumHeading = document.querySelector('h1.header-new-title');
+
+        if (artistLink && albumHeading) {
+            return {
+                artist: artistLink.textContent.trim(),
+                album: albumHeading.textContent.trim()
+            };
+        }
+
+        // Last resort: parse from URL
         const parts = location.pathname.split('/').filter(Boolean);
         const mi = parts.indexOf('music');
         if (mi >= 0 && parts.length > mi + 2) {
-            const d = s => { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch { return s.replace(/\+/g, ' '); } };
+            const d = s => {
+                try {
+                    let decoded = decodeURIComponent(s);
+                    // If still encoded, decode again (handles double-encoding)
+                    while (decoded.includes('%') && decoded !== decodeURIComponent(decoded)) {
+                        decoded = decodeURIComponent(decoded);
+                    }
+                    return decoded;
+                } catch {
+                    return s;
+                }
+            };
             return { artist: d(parts[mi + 1]), album: d(parts[mi + 2]) };
         }
     } catch (e) {
@@ -789,4 +814,3 @@ function downloadImageAsFile(url) {
 })();
 
 })();
-
