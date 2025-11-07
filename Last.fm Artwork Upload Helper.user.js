@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Last.fm Artwork Upload Helper (Enhanced)
+// @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.7
+// @version      1.0.8
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
@@ -1070,3 +1070,4 @@
     })();
 
 })();
+
