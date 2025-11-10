@@ -85,7 +85,7 @@ _Default: United States_
 
 ### Theme
 Choose between Dark Mode and Light Mode.  
-_Default: Dark Mode_
+_Default: Light Mode_
 
 ---
 
