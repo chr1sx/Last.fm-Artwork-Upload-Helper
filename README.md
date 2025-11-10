@@ -99,10 +99,10 @@ This userscript is available under the [MIT License](https://github.com/chr1sx/L
 
 <div align="center">
 
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot3.png?raw=true" width="240" alt="Screenshot">
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot4.png?raw=true" width="240" alt="Screenshot">
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot5.png?raw=true" width="240" alt="Screenshot">
-<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot6.png?raw=true" width="240" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot3.png?raw=true" width="220" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot4.png?raw=true" width="220" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot5.png?raw=true" width="220" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot6.png?raw=true" width="220" alt="Screenshot">
 
 </div>
 
