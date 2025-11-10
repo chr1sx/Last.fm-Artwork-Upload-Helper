@@ -15,7 +15,8 @@
 
 ## Features
 
-- **Seamless Integration** - Automatically detects Last.fm upload pages and injects a helper panel  
+- **Seamless Integration** - Automatically detects Last.fm upload pages and injects a helper panel
+- **Missing Artwork Indicators** - Automatically highlights missing artwork on the page you're on
 - **Automatic Artist/Album Detection** - Extracts metadata from the current Last.fm page  
 - **Multi-Source Search** - Search across nearly 30 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)  
 - **Direct Upload** - Upload artwork directly from the search results without downloading and uploading manually  
@@ -66,24 +67,43 @@ Select up to nine platforms to search:
 - **Regional**: Bugs, Gaana, KKBOX, KuGou, LINE MUSIC, Melon, NetEase  
 - **Other**: Fanart.tv, SoundCloud, Soulseek  
 
-_Default_: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify
+_Default: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify_
+
+### Show Missing Artwork Indicators
+Enable or disable indicators on the page you're on.  
+_Default: Enabled_
 
 ### Minimal Resolution
 Set the minimum image resolution (e.g. 600 for 600×600px or higher).  
-Images below the requirement appear blurred in search results.
+Images below the requirement appear blurred in search results.  
+_Default: 0_
 
 ### Country
 Select your preferred country for localized results:  
 Australia, Brazil, Canada, China, France, Germany, India, Italy, Japan, Korea, Mexico, Taiwan, UK, US  
-_Default_: United States
+_Default: United States_
 
 ### Theme
-Choose between Dark Mode and Light Mode.
+Choose between Dark Mode and Light Mode.  
+_Default: Dark Mode_
 
 ---
 
 ## License
 
 This userscript is available under the [MIT License](https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/tree/main?tab=MIT-1-ov-file).
+
+---
+
+## Screenshots
+
+<div align="center">
+
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot3.png?raw=true" width="240" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot4.png?raw=true" width="240" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot5.png?raw=true" width="240" alt="Screenshot">
+<img src="https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/blob/main/Images/screenshot6.png?raw=true" width="240" alt="Screenshot">
+
+</div>
 
 ---
