@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.8
+// @version      1.0.9
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
@@ -301,9 +301,30 @@
 
     // === Page Detection & Extraction ===
     function isUploadPath(pathname = location.pathname) {
-        return /\/music\/.+\/.+\/\+images\/upload(\/|$|\?)/i.test(pathname) ||
-               /\/music\/.+\/\+images\/upload(\/|$|\?)/i.test(pathname) ||
-               /\/settings\/profile\/images\/upload(\/|$|\?)/i.test(pathname);
+        // Allow profile settings path
+        if (/\/settings\/profile\/images\/upload(\/|$|\?)/i.test(pathname)) {
+            return true;
+        }
+
+        // Check if it's an upload path
+        if (!/\/\+images\/upload(\/|$|\?)/i.test(pathname)) {
+            return false;
+        }
+
+        // Parse the path to count segments
+        const parts = pathname.split('/').filter(Boolean);
+        const musicIndex = parts.indexOf('music');
+
+        if (musicIndex === -1) {
+            return false;
+        }
+
+        // Count segments after 'music' and before '+images'
+        const imagesIndex = parts.indexOf('+images');
+        if (imagesIndex === -1) return false;
+
+        const segmentsBetween = imagesIndex - musicIndex - 1;
+        return segmentsBetween >= 2;
     }
 
     function extractArtistAlbum() {
@@ -1070,4 +1091,3 @@
     })();
 
 })();
-
