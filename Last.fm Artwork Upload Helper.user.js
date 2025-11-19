@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.0.9
+// @version      1.1
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
@@ -238,7 +238,7 @@
             e.stopPropagation();
 
             if (uploadUrl) {
-                window.location.href = uploadUrl;
+                window.open(uploadUrl, '_blank');
             }
         });
 
@@ -370,7 +370,8 @@
                         while (decoded.includes('%') && decoded !== decodeURIComponent(decoded)) {
                             decoded = decodeURIComponent(decoded);
                         }
-                        return decoded;
+                        // Handle plus signs in fallback case
+                        return s.replace(/\+/g, ' ');
                     } catch {
                         return s;
                     }
