@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.1.1
+// @version      1.1.2
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -126,14 +126,18 @@
 
             // First, try to find an album link (not a track link with /_/)
             let albumLink = null;
+            let hasTrackLink = false;
             const allLinks = container.querySelectorAll('a[href*="/music/"]');
 
             for (const link of allLinks) {
                 const href = link.getAttribute('href');
                 if (!href) continue;
 
-                // Skip track links (those with /_/)
-                if (href.includes('/_/')) continue;
+                // Check if this is a track link
+                if (href.includes('/_/')) {
+                    hasTrackLink = true;
+                    continue;
+                }
 
                 const pathParts = href.split('/').filter(Boolean);
                 const musicIndex = pathParts.findIndex(p => p === 'music');
@@ -145,8 +149,28 @@
                 }
             }
 
-            // If no album link found, try to find artist link and go to their albums page
-            if (!albumLink) {
+            // If we found an album link, use it
+            if (albumLink) {
+                const href = albumLink.getAttribute('href');
+                if (!href) return null;
+
+                let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
+                if (cleanHref.startsWith('/')) {
+                    cleanHref = 'https://www.last.fm' + cleanHref;
+                }
+
+                const pathParts = cleanHref.split('/').filter(Boolean);
+                const musicIndex = pathParts.indexOf('music');
+
+                if (musicIndex >= 0 && pathParts.length >= musicIndex + 3) {
+                    const albumPath = pathParts.slice(musicIndex).join('/');
+                    return `https://www.last.fm/${albumPath}/+images/upload`;
+                }
+            }
+
+            // If no album link found but has track link, find artist and go to albums page
+            // This handles track scrobbles in profile tables
+            if (!albumLink && hasTrackLink) {
                 for (const link of allLinks) {
                     const href = link.getAttribute('href');
                     if (!href || href.includes('/_/')) continue;
@@ -156,7 +180,6 @@
 
                     // Check if this is an artist page (only 1 segment after 'music')
                     if (musicIndex >= 0 && pathParts.length === musicIndex + 2) {
-                        // Return link to artist's albums page
                         let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
                         if (cleanHref.startsWith('/')) {
                             cleanHref = 'https://www.last.fm' + cleanHref;
@@ -164,25 +187,10 @@
                         return `${cleanHref}/+albums`;
                     }
                 }
-                return null;
             }
 
-            const href = albumLink.getAttribute('href');
-            if (!href) return null;
-
-            let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
-            if (cleanHref.startsWith('/')) {
-                cleanHref = 'https://www.last.fm' + cleanHref;
-            }
-
-            const pathParts = cleanHref.split('/').filter(Boolean);
-            const musicIndex = pathParts.indexOf('music');
-
-            if (musicIndex >= 0 && pathParts.length >= musicIndex + 3) {
-                const albumPath = pathParts.slice(musicIndex).join('/');
-                return `https://www.last.fm/${albumPath}/+images/upload`;
-            }
-
+            // If no album link and no track link, this is probably an artist image
+            // We don't want to show indicators for artist profile images
             return null;
 
         } catch (e) {
