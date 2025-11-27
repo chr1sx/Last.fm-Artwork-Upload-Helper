@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.1
+// @version      1.1.1
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
+// @author       chr1sx
 // @match        https://www.last.fm/*
 // @match        https://covers.musichoarders.xyz/*
 // @grant        GM_xmlhttpRequest
@@ -25,7 +26,8 @@
         sources: ['Bandcamp', 'Deezer', 'Discogs', 'iTunes', 'KuGou', 'Qobuz', 'Spotify'],
         country: 'us',
         remoteAgent: 'lastfm-mh-integration/3.4',
-        showMissingIndicators: true
+        showMissingIndicators: true,
+        openInNewTab: false
     };
 
     let MH_CONFIG = {};
@@ -99,6 +101,9 @@
             'https://lastfm.freetls.fastly.net/i/u/64s/2a96cbd8b46e442fc41c2b86b821562f.png',
             'https://lastfm.freetls.fastly.net/i/u/34s/2a96cbd8b46e442fc41c2b86b821562f.png',
             '2a96cbd8b46e442fc41c2b86b821562f.png',
+            '2a96cbd8b46e442fc41c2b86b821562f.jpg',
+            'c6f59c1e5e7240a4c0d427abd71f3dbb.png',
+            'c6f59c1e5e7240a4c0d427abd71f3dbb.jpg',
             'c6f59c1e5e7240a4c0d427abd71f3dbb',
             'default_album'
         ];
@@ -119,29 +124,51 @@
 
             if (!container) return null;
 
-            let albumLink = container.querySelector('a[href*="/music/"][href*="+"]');
-            if (!albumLink) {
-                albumLink = container.querySelector('a.link-block-target') ||
-                            container.querySelector('a.resource-list--release-list-item-name');
-            }
-            if (!albumLink) {
-                const allLinks = container.querySelectorAll('a[href*="/music/"]');
-                for (const link of allLinks) {
-                    const href = link.getAttribute('href');
-                    if (href) {
-                        const pathParts = href.split('/').filter(Boolean);
-                        if (pathParts.length >= 3 && pathParts[0] === 'music' && pathParts[2] !== '_') {
-                            albumLink = link;
-                            break;
-                        }
-                    }
+            // First, try to find an album link (not a track link with /_/)
+            let albumLink = null;
+            const allLinks = container.querySelectorAll('a[href*="/music/"]');
+
+            for (const link of allLinks) {
+                const href = link.getAttribute('href');
+                if (!href) continue;
+
+                // Skip track links (those with /_/)
+                if (href.includes('/_/')) continue;
+
+                const pathParts = href.split('/').filter(Boolean);
+                const musicIndex = pathParts.findIndex(p => p === 'music');
+
+                // We need at least artist + album (2 segments after 'music')
+                if (musicIndex >= 0 && pathParts.length >= musicIndex + 3) {
+                    albumLink = link;
+                    break;
                 }
             }
 
-            if (!albumLink) return null;
+            // If no album link found, try to find artist link and go to their albums page
+            if (!albumLink) {
+                for (const link of allLinks) {
+                    const href = link.getAttribute('href');
+                    if (!href || href.includes('/_/')) continue;
+
+                    const pathParts = href.split('/').filter(Boolean);
+                    const musicIndex = pathParts.findIndex(p => p === 'music');
+
+                    // Check if this is an artist page (only 1 segment after 'music')
+                    if (musicIndex >= 0 && pathParts.length === musicIndex + 2) {
+                        // Return link to artist's albums page
+                        let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
+                        if (cleanHref.startsWith('/')) {
+                            cleanHref = 'https://www.last.fm' + cleanHref;
+                        }
+                        return `${cleanHref}/+albums`;
+                    }
+                }
+                return null;
+            }
 
             const href = albumLink.getAttribute('href');
-            if (!href || href.includes('/_/')) return null;
+            if (!href) return null;
 
             let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
             if (cleanHref.startsWith('/')) {
@@ -238,7 +265,11 @@
             e.stopPropagation();
 
             if (uploadUrl) {
-                window.open(uploadUrl, '_blank');
+                if (MH_CONFIG.openInNewTab) {
+                    window.open(uploadUrl, '_blank');
+                } else {
+                    window.location.href = uploadUrl;
+                }
             }
         });
 
@@ -257,12 +288,14 @@
             const classList = img.className || '';
             const parentClass = img.parentElement?.className || '';
 
+            // Skip avatar images
             const isAvatar = classList.includes('avatar') ||
                              parentClass.includes('avatar') ||
                              img.closest('.avatar');
 
             if (isAvatar) return false;
 
+            // Check for album/track cover classes
             const isAlbumCover = classList.includes('cover-art') ||
                                  classList.includes('album-cover') ||
                                  classList.includes('chartlist-image') ||
@@ -280,6 +313,13 @@
                                       img.closest('.grid-items-cover-image') ||
                                       img.closest('.header-new-background-image') ||
                                       img.closest('.resource-list--release-list-item-preview');
+
+            // Check if image is in a table row with music links (for profile recent tracks)
+            const parentRow = img.closest('tr');
+            if (parentRow) {
+                const hasMusicLink = parentRow.querySelector('a[href*="/music/"]');
+                if (hasMusicLink) return true;
+            }
 
             return isAlbumCover || hasAlbumContainer;
         });
@@ -370,10 +410,10 @@
                         while (decoded.includes('%') && decoded !== decodeURIComponent(decoded)) {
                             decoded = decodeURIComponent(decoded);
                         }
-                        // Handle plus signs in fallback case
-                        return s.replace(/\+/g, ' ');
+                        return decoded;
                     } catch {
-                        return s;
+                        // Only handle plus signs in fallback case
+                        return s.replace(/\+/g, ' ');
                     }
                 };
                 return { artist: d(parts[mi + 1]), album: d(parts[mi + 2]) };
@@ -690,6 +730,12 @@
                         Show Missing Artwork Indicators
                     </label>
                 </div>
+                <div style="margin-bottom:4px;">
+                    <label style="display:block;margin-bottom:4px;color:${colors.label};">
+                        <input type="checkbox" id="mh-open-new-tab" style="margin-right:4px;accent-color:#337ab7;">
+                        Open Upload Page in New Tab
+                    </label>
+                </div>
                 <div style="margin-bottom:8px;">
                     <label for="mh-res-input" style="display:block;margin-bottom:4px;color:${colors.label};">Minimal Resolution:</label>
                     <input type="number" id="mh-res-input" style="width:100%;padding:8px;border-radius:4px;background:${colors.inputBg};border:1px solid ${colors.inputBorder};color:${colors.text};">
@@ -750,6 +796,9 @@
     function loadSettingsIntoPanel() {
         const showMissingCheckbox = $mh('#mh-show-missing');
         if (showMissingCheckbox) showMissingCheckbox.checked = MH_CONFIG.showMissingIndicators;
+
+        const openNewTabCheckbox = $mh('#mh-open-new-tab');
+        if (openNewTabCheckbox) openNewTabCheckbox.checked = MH_CONFIG.openInNewTab;
 
         ALL_SOURCES.forEach(source => {
             const checkbox = $mh(`#mh-source-${source.replace(/\s/g, '_')}`);
@@ -813,6 +862,9 @@
 
         const showMissingCheckbox = $mh('#mh-show-missing');
         if (showMissingCheckbox) MH_CONFIG.showMissingIndicators = showMissingCheckbox.checked;
+
+        const openNewTabCheckbox = $mh('#mh-open-new-tab');
+        if (openNewTabCheckbox) MH_CONFIG.openInNewTab = openNewTabCheckbox.checked;
 
         MH_CONFIG.sources = checkedSources;
         MH_CONFIG.country = $mh('#mh-country-select').value;
