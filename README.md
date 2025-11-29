@@ -5,6 +5,7 @@
 # Last.fm Artwork Upload Helper
 
 [![Install Script](https://img.shields.io/badge/Install%20Script-brightgreen?style=for-the-badge)](https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/main/Last.fm%20Artwork%20Upload%20Helper.user.js)
+[![Firefox Add-on](https://img.shields.io/amo/v/last-fm-artwork-upload-helper?style=for-the-badge&logo=firefox&logoColor=white&color=orange&label=Firefox%20Add-on)](https://addons.mozilla.org/en-US/firefox/addon/last-fm-artwork-upload-helper/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper/tree/main?tab=MIT-1-ov-file)
 
 *A userscript that streamlines uploading album artwork to Last.fm*
@@ -71,6 +72,10 @@ _Default: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify_
 
 ### Show Missing Artwork Indicators
 Enable or disable indicators on the page you're on.  
+_Default: Enabled_
+
+### Open Upload Page In New Tab
+Enable or disable opening upload page via indicators in new tab  
 _Default: Enabled_
 
 ### Minimal Resolution
