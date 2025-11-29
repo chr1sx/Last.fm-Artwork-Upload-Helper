@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.1.2
+// @version      1.1.5
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -27,7 +27,7 @@
         country: 'us',
         remoteAgent: 'lastfm-mh-integration/3.4',
         showMissingIndicators: true,
-        openInNewTab: false
+        openInNewTab: true
     };
 
     let MH_CONFIG = {};
@@ -741,7 +741,7 @@
                 <div style="margin-bottom:4px;">
                     <label style="display:block;margin-bottom:4px;color:${colors.label};">
                         <input type="checkbox" id="mh-open-new-tab" style="margin-right:4px;accent-color:#337ab7;">
-                        Open Upload Page in New Tab
+                        Open Upload Page In New Tab
                     </label>
                 </div>
                 <div style="margin-bottom:8px;">
