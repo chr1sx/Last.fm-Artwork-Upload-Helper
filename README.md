@@ -75,7 +75,7 @@ Enable or disable indicators on the page you're on.
 _Default: Enabled_
 
 ### Open Upload Page In New Tab
-Enable or disable opening upload page via indicators in new tab  
+Enable or disable opening upload page in new tab via indicator.  
 _Default: Enabled_
 
 ### Minimal Resolution
