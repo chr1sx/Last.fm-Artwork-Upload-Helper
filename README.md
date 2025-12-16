@@ -20,7 +20,7 @@
 - **Seamless Integration** - Detects Last.fm upload pages and injects a helper panel
 - **Multi-Source Search** - Search across 25 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)
 - **Direct Upload** - Uploads artwork directly from search results without manual downloads
-- - **Image Compression** - Automatically compresses images larger than 5 MB
+- **Image Compression** - Automatically compresses images larger than 5 MB
 - **Themes** - Choose between light and dark mode
 
 ---
