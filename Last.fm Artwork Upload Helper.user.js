@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.1.6
+// @version      1.1.7
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -27,7 +27,8 @@
         country: 'us',
         remoteAgent: 'lastfm-mh-integration/3.4',
         showMissingIndicators: true,
-        openInNewTab: true
+        openInNewTab: true,
+        compressImages: true
     };
 
     let MH_CONFIG = {};
@@ -44,6 +45,85 @@
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&quot;', "'": '&#39;' }[m]));
     const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    async function getImageDimensions(blob) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve({ width: img.width, height: img.height });
+            img.onerror = () => resolve({ width: 0, height: 0 }); // Fallback on error
+            img.src = URL.createObjectURL(blob);
+        });
+    }
+
+    // compressImage function
+    async function compressImage(blob, maxSizeMB = 5) {
+        const sizeInMB = blob.size / (1024 * 1024);
+
+        // If under 5MB, return as-is
+        if (sizeInMB <= maxSizeMB) {
+            return { blob, wasCompressed: false }; // Return object to indicate compression status
+        }
+
+        console.log(`[MH] Image is ${sizeInMB.toFixed(2)}MB, compressing...`);
+
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Target dimensions: 1400x1400 max
+                let width = img.width;
+                let height = img.height;
+                const maxDimension = 1400;
+
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) {
+                        height = (height / width) * maxDimension;
+                        width = maxDimension;
+                    } else {
+                        width = (width / height) * maxDimension;
+                        height = maxDimension;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Start with 92% quality
+                let quality = 0.92;
+                let originalBlob = blob; // Keep original blob to compare size
+
+                const tryCompress = () => {
+                    canvas.toBlob((compressedBlob) => {
+                        if (!compressedBlob) {
+                            reject(new Error('Compression failed'));
+                            return;
+                        }
+
+                        const compressedSizeMB = compressedBlob.size / (1024 * 1024);
+                        console.log(`[MH] Compressed to ${compressedSizeMB.toFixed(2)}MB at ${Math.round(quality * 100)}% quality`);
+
+                        // If still over 5MB and we can reduce quality further, try again
+                        if (compressedSizeMB > maxSizeMB && quality > 0.5) {
+                            quality -= 0.05;
+                            tryCompress();
+                        } else {
+                            // Indicate if the blob size is meaningfully smaller
+                            const wasCompressed = originalBlob.size > compressedBlob.size + 1024; // +1KB tolerance
+                            resolve({ blob: compressedBlob, wasCompressed });
+                        }
+                    }, 'image/jpeg', quality);
+                };
+
+                tryCompress();
+            };
+
+            img.onerror = () => reject(new Error('Failed to load image for compression'));
+            img.src = URL.createObjectURL(blob);
+        });
+    }
 
     function normalizeSources(list) {
         return list.map(s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '')).join(',');
@@ -63,6 +143,11 @@
 
         if (!MH_CONFIG.country) {
             MH_CONFIG.country = DEFAULT_CONFIG.country;
+        }
+
+        // Ensure new 'compressImages' setting is present if it wasn't in stored config
+        if (!MH_CONFIG.hasOwnProperty('compressImages')) {
+            MH_CONFIG.compressImages = DEFAULT_CONFIG.compressImages;
         }
 
         if (!storedConfig) await saveConfig();
@@ -612,11 +697,15 @@
                         e.stopImmediatePropagation();
 
                         const imageUrl = getLargestImageUrl(imageElement);
+                        const sourceElement = clickTarget.closest('.result-item') || imageElement.closest('.result-item');
+                        const sourceSpan = sourceElement?.querySelector('.image-source span');
+                        const source = sourceSpan?.textContent || 'Unknown Source';
 
                         if (imageUrl && window.opener && !window.opener.closed) {
                             window.opener.postMessage({
                                 type: 'LASTFM_ARTWORK_SELECTED',
-                                url: imageUrl
+                                url: imageUrl,
+                                source: source // Pass the source info
                             }, 'https://www.last.fm');
 
                             imageElement.dataset.selected = 'true';
@@ -721,7 +810,7 @@
             <div id="mh-settings-panel" style="display:none;border-top:1px solid ${colors.topBorder};padding-top:10px;margin-bottom:4px;">
                 <div style="margin-bottom:12px;">
                     <label style="display:block;margin-bottom:4px;color:${colors.label};">Sources: <span id="mh-source-counter" style="font-weight:bold;color:${colors.header};">0/9</span></label>
-                    <div id="mh-sources-checkboxes" style="max-height:130px;overflow-y:auto;border:1px solid ${colors.inputBorder};padding:4px;border-radius:4px;background:${colors.inputBg}; display:flex; flex-wrap:wrap;">
+                    <div id="mh-sources-checkboxes" style="max-height:106px;overflow-y:auto;border:1px solid ${colors.inputBorder};padding:4px;border-radius:4px;background:${colors.inputBg}; display:flex; flex-wrap:wrap;">
                         ${ALL_SOURCES.map(source => `
                             <div style="display:flex;align-items:center;margin-bottom:4px;width:50%;">
                                 <input type="checkbox" id="mh-source-${source.replace(/\s/g, '_')}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;accent-color:#337ab7;" class="mh-source-checkbox">
@@ -741,6 +830,12 @@
                     <label style="display:block;margin-bottom:4px;color:${colors.label};">
                         <input type="checkbox" id="mh-open-new-tab" style="margin-right:4px;accent-color:#337ab7;">
                         Open Upload Page In New Tab
+                    </label>
+                </div>
+                <div style="margin-bottom:4px;">
+                    <label style="display:block;margin-bottom:4px;color:${colors.label};">
+                        <input type="checkbox" id="mh-compress-images" style="margin-right:4px;accent-color:#337ab7;">
+                        Compress Large Images
                     </label>
                 </div>
                 <div style="margin-bottom:8px;">
@@ -806,6 +901,9 @@
 
         const openNewTabCheckbox = $mh('#mh-open-new-tab');
         if (openNewTabCheckbox) openNewTabCheckbox.checked = MH_CONFIG.openInNewTab;
+
+        const compressImagesCheckbox = $mh('#mh-compress-images');
+        if (compressImagesCheckbox) compressImagesCheckbox.checked = MH_CONFIG.compressImages;
 
         ALL_SOURCES.forEach(source => {
             const checkbox = $mh(`#mh-source-${source.replace(/\s/g, '_')}`);
@@ -873,6 +971,9 @@
         const openNewTabCheckbox = $mh('#mh-open-new-tab');
         if (openNewTabCheckbox) MH_CONFIG.openInNewTab = openNewTabCheckbox.checked;
 
+        const compressImagesCheckbox = $mh('#mh-compress-images');
+        if (compressImagesCheckbox) MH_CONFIG.compressImages = compressImagesCheckbox.checked;
+
         MH_CONFIG.sources = checkedSources;
         MH_CONFIG.country = $mh('#mh-country-select').value;
         MH_CONFIG.resolution = $mh('#mh-res-input').value.trim();
@@ -931,37 +1032,35 @@
     }
 
     window.addEventListener('message', async (event) => {
-        if (event.origin !== 'https://covers.musichoarders.xyz') return;
-
-        if (event.data?.type === 'LASTFM_ARTWORK_SELECTED' && event.data.url) {
-            const statusEl = $mh('#mh-status');
-            if (statusEl) statusEl.textContent = 'Artwork selected! Setting up...';
-
-            try {
-                const fileInput = await findLastFmFileInput();
-                if (!fileInput) {
-                    const errMsg = 'Upload input not found. Please ensure the upload dialog is open.';
-                    if (statusEl) statusEl.textContent = errMsg;
-                    return;
-                }
-
-                const file = await downloadImageAsFile(event.data.url);
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-
-                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-                await fillLastFmMetadata();
-
-                if (statusEl) statusEl.textContent = '✓ Artwork set! You can now upload.';
-            } catch (e) {
-                console.error('Failed to set artwork:', e);
-                if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    if (event.origin !== 'https://covers.musichoarders.xyz') return;
+    if (event.data?.type === 'LASTFM_ARTWORK_SELECTED' && event.data.url) {
+        const statusEl = $mh('#mh-status');
+        try {
+            const fileInput = await findLastFmFileInput();
+            if (!fileInput) {
+                const errMsg = 'Upload input not found. Please ensure the upload dialog is open.';
+                if (statusEl) statusEl.textContent = errMsg;
+                return;
             }
+
+            if (statusEl) statusEl.textContent = 'Artwork selected! Processing...';
+
+            const { file, wasCompressed } = await downloadImageAsFile(event.data.url, event.data.source);
+
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            fileInput.files = dataTransfer.files;
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+            await fillLastFmMetadata();
+
+            if (statusEl) statusEl.textContent = `✓ Artwork set! You can now upload.`;
+         } catch (e) {
+            console.error('Failed to set artwork:', e);
+            if (statusEl) statusEl.textContent = `Error: ${e.message}`;
         }
-    });
+    }
+});
 
     async function fillLastFmMetadata() {
         try {
@@ -1020,55 +1119,65 @@
         return map[mime.toLowerCase()] || null;
     }
 
-    function downloadImageAsFile(url) {
-        return new Promise((resolve, reject) => {
+    // Modified downloadImageAsFile to include compression logic and generate dynamic filename
+    async function downloadImageAsFile(url, source = 'Source Unknown') {
+        let originalBlob;
+        let wasCompressed = false;
+
+        // Function to fetch the blob
+        const fetchBlob = () => {
             if (typeof GM_xmlhttpRequest === 'function') {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'arraybuffer',
-                    onload: (res) => {
-                        try {
+                return new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: url,
+                        responseType: 'arraybuffer',
+                        onload: (res) => {
                             const hdrs = res.responseHeaders || '';
                             const m = hdrs.match(/content-type:\s*([^\r\n;]+)/i);
                             const mime = m?.[1] || 'image/jpeg';
-                            const ext = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
-                            const fileName = `Uploaded With Last.fm Artwork Upload Helper.${ext}`;
-                            const blob = new Blob([res.response], { type: mime });
-
-                            try {
-                                resolve(new File([blob], fileName, { type: mime }));
-                            } catch {
-                                blob.name = fileName;
-                                blob.type = mime;
-                                resolve(blob);
-                            }
-                        } catch (e) {
-                            reject(e);
-                        }
-                    },
-                    onerror: (err) => reject(new Error(`Failed to download: ${err.status || 'network error'}`)),
-                    ontimeout: () => reject(new Error('Download timed out'))
+                            resolve(new Blob([res.response], { type: mime }));
+                        },
+                        onerror: (err) => reject(new Error(`Failed to download: ${err.status || 'network error'}`)),
+                        ontimeout: () => reject(new Error('Download timed out'))
+                    });
                 });
             } else {
-                fetch(url, { credentials: 'omit' })
-                    .then(r => r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`)))
-                    .then(blob => {
-                        const mime = blob.type || 'image/jpeg';
-                        const ext = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
-                        const fileName = `Uploaded With Last.fm Artwork Upload Helper.${ext}`;
-
-                        try {
-                            resolve(new File([blob], fileName, { type: mime }));
-                        } catch {
-                            blob.name = fileName;
-                            blob.type = mime;
-                            resolve(blob);
-                        }
-                    })
-                    .catch(e => reject(new Error(`Failed to download: ${e.message}`)));
+                return fetch(url, { credentials: 'omit' })
+                    .then(r => r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`)));
             }
-        });
+        };
+
+        originalBlob = await fetchBlob();
+        let processedBlob = originalBlob;
+
+        if (MH_CONFIG.compressImages) {
+            try {
+                const compressionResult = await compressImage(originalBlob);
+                processedBlob = compressionResult.blob;
+                wasCompressed = compressionResult.wasCompressed;
+            } catch (e) {
+                console.error("[MH] Image compression failed:", e);
+                // Continue with original blob if compression fails
+            }
+        }
+
+        const dimensions = await getImageDimensions(processedBlob);
+        const mime = processedBlob.type || 'image/jpeg';
+        const ext = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
+        const fileSizeMB = (processedBlob.size / (1024 * 1024)).toFixed(1);
+
+        // Construct the dynamic filename
+        let fileName = `${dimensions.width}x${dimensions.height}, ${fileSizeMB}MB${wasCompressed ? ' (Compressed)' : ''}.${ext}`;
+
+        try {
+            return { file: new File([processedBlob], fileName, { type: mime }), wasCompressed };
+        } catch {
+            // Fallback for older browsers
+            processedBlob.name = fileName;
+            processedBlob.type = mime;
+            return { file: processedBlob, wasCompressed };
+        }
     }
 
     // === Initialization ===
