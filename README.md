@@ -19,7 +19,7 @@
 - **Seamless Integration** - Automatically detects Last.fm upload pages and injects a helper panel
 - **Missing Artwork Indicators** - Automatically highlights missing artwork on the page you're on
 - **Automatic Artist/Album Detection** - Extracts metadata from the current Last.fm page  
-- **Multi-Source Search** - Search across nearly 30 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)  
+- **Multi-Source Search** - Search across 25 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)  
 - **Direct Upload** - Upload artwork directly from the search results without downloading and uploading manually  
 
 ---
@@ -62,11 +62,11 @@
 
 ### Sources
 Select up to nine platforms to search:
-- **Streaming**: Amazon Music, Apple Music, Deezer, Spotify, Tidal, FLO  
-- **Stores**: Bandcamp, Beatport, BOOTH, iTunes, OTOTOY, RecoChoku, Qobuz  
-- **Databases**: Discogs, Last.fm, MusicBrainz, Metal Archives, VGMdb, THWiki  
-- **Regional**: Bugs, Gaana, KKBOX, KuGou, LINE MUSIC, Melon, NetEase  
-- **Other**: Fanart.tv, SoundCloud, Soulseek  
+- **Streaming**: Amazon Music, Apple Music, Deezer, Spotify, TIDAL, FLO  
+- **Stores**: Bandcamp, Beatport, BOOTH, iTunes, OTOTOY, Qobuz  
+- **Databases**: Discogs, Last.fm, MusicBrainz, VGMdb, THWiki  
+- **Regional**: Bugs, Gaana, KKBOX, KuGou, LINE MUSIC, Melon  
+- **Other**: Fanart.tv, Soulseek  
 
 _Default: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify_
 
