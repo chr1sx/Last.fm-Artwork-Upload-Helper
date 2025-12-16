@@ -16,11 +16,11 @@
 
 ## Features
 
-- **Seamless Integration** - Detects Last.fm upload pages and injects a helper panel
 - **Missing Artwork Indicators** - Highlights missing artwork on the page you're on
+- **Seamless Integration** - Detects Last.fm upload pages and injects a helper panel
 - **Multi-Source Search** - Search across 25 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)
-- **Image Compression** - Automatically compresses images larger than 5 MB
 - **Direct Upload** - Uploads artwork directly from search results without manual downloads
+- - **Image Compression** - Automatically compresses images larger than 5 MB
 - **Themes** - Choose between light and dark mode
 
 ---
