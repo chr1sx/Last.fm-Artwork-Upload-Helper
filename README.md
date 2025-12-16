@@ -80,7 +80,7 @@ Enable or disable opening upload page in new tab via indicator.
 _Default: Enabled_
 
 ### Compress Large Images
-Enable or disable automatic compression of images that exceed 5MB.
+Enable or disable automatic compression for images that exceed the 5 MB limit.  
 _Default: Enabled_
 
 ### Minimal Resolution
