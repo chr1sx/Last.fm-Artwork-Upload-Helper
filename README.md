@@ -18,10 +18,10 @@
 
 - **Seamless Integration** - Detects Last.fm upload pages and injects a helper panel
 - **Missing Artwork Indicators** - Highlights missing artwork on the page you're on
-- **Artist/Album Detection** - Extracts metadata from the current Last.fm page  
 - **Multi-Source Search** - Search across 25 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)
-- **Image compression** - Compresses images larger than 5 MB
-- **Direct Upload** - Upload artwork directly from the search results without downloading and uploading manually
+- **Image Compression** - Automatically compresses images larger than 5 MB
+- **Direct Upload** - Uploads artwork directly from search results without manual downloads
+- **Themes** - Choose between light and dark mode
 
 ---
 
