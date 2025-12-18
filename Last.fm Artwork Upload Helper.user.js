@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.1.7
+// @version      1.1.8
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -12,8 +12,9 @@
 // @connect      covers.musichoarders.xyz
 // @run-at       document-idle
 // @license      MIT
-// @downloadURL https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.user.js
-// @updateURL https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.meta.js
+// @icon         https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/refs/heads/main/Images/logo-128.png
+// @downloadURL  https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.user.js
+// @updateURL    https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.meta.js
 // ==/UserScript==
 
 (function () {
@@ -35,9 +36,14 @@
 
     const ALL_SOURCES = [
         'Amazon Music', 'Apple Music', 'Bandcamp', 'Beatport', 'BOOTH', 'Bugs', 'Deezer', 'Discogs',
-        'Fanart.tv', 'FLO', 'Gaana', 'iTunes', 'KKBOX', 'KuGou', 'Last.fm', 'LINE MUSIC', 'Melon',
+        'Fanart.tv', 'FLO', 'Gaana', 'iTunes', 'KKBOX', 'KuGou', 'LINE MUSIC', 'Melon',
         'MusicBrainz', 'OTOTOY', 'Qobuz', 'Soulseek', 'Spotify', 'THWiki', 'TIDAL', 'VGMdb'
     ];
+
+    // Creates a clean slug for source names to use in HTML IDs
+    function createSourceSlug(sourceName) {
+        return sourceName.replace(/[^a-zA-Z0-9_]/g, '_');
+    }
 
     // === Utility Functions ===
     const $mh = (s, r = document) => r.querySelector(s);
@@ -48,23 +54,38 @@
 
     async function getImageDimensions(blob) {
         return new Promise((resolve) => {
+            if (!blob || blob.size === 0) {
+                resolve({ width: 0, height: 0 });
+                return;
+            }
             const img = new Image();
-            img.onload = () => resolve({ width: img.width, height: img.height });
-            img.onerror = () => resolve({ width: 0, height: 0 }); // Fallback on error
+            img.onload = () => {
+                URL.revokeObjectURL(img.src);
+                resolve({ width: img.width, height: img.height });
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(img.src);
+                resolve({ width: 0, height: 0 });
+            };
             img.src = URL.createObjectURL(blob);
         });
     }
 
-    // compressImage function
-    async function compressImage(blob, maxSizeMB = 5) {
+    /**
+     * Compresses/converts an image blob to meet size and format requirements.
+     * @param {Blob} blob - The image blob to process
+     * @param {number} maxSizeMB - Maximum allowed size in megabytes (default: 5)
+     * @param {boolean} forceResize - If true, always resize to maxDimension. If false, only resize if needed for size/quality (default: true)
+     * @param {string} targetMimeType - Desired output format (default: 'image/jpeg')
+     * @returns {Promise<{blob: Blob, wasModified: boolean}>} Processed blob and modification flag
+     */
+    async function compressImage(blob, maxSizeMB = 5, forceResize = true, targetMimeType = 'image/jpeg') {
         const sizeInMB = blob.size / (1024 * 1024);
 
-        // If under 5MB, return as-is
-        if (sizeInMB <= maxSizeMB) {
-            return { blob, wasCompressed: false }; // Return object to indicate compression status
+        // Short-circuit if no processing needed
+        if (!forceResize && sizeInMB <= maxSizeMB && blob.type === targetMimeType) {
+            return { blob, wasModified: false };
         }
-
-        console.log(`[MH] Image is ${sizeInMB.toFixed(2)}MB, compressing...`);
 
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -72,12 +93,12 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
 
-                // Target dimensions: 1400x1400 max
                 let width = img.width;
                 let height = img.height;
                 const maxDimension = 1400;
 
-                if (width > maxDimension || height > maxDimension) {
+                // Resize logic: force resize if enabled, or if image exceeds maxDimension
+                if (forceResize && (width > maxDimension || height > maxDimension)) {
                     if (width > height) {
                         height = (height / width) * maxDimension;
                         width = maxDimension;
@@ -91,9 +112,8 @@
                 canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Start with 92% quality
                 let quality = 0.92;
-                let originalBlob = blob; // Keep original blob to compare size
+                const originalBlob = blob;
 
                 const tryCompress = () => {
                     canvas.toBlob((compressedBlob) => {
@@ -103,18 +123,17 @@
                         }
 
                         const compressedSizeMB = compressedBlob.size / (1024 * 1024);
-                        console.log(`[MH] Compressed to ${compressedSizeMB.toFixed(2)}MB at ${Math.round(quality * 100)}% quality`);
 
-                        // If still over 5MB and we can reduce quality further, try again
+                        // Reduce quality by 5% if still over limit and quality can be reduced further
                         if (compressedSizeMB > maxSizeMB && quality > 0.5) {
                             quality -= 0.05;
                             tryCompress();
                         } else {
-                            // Indicate if the blob size is meaningfully smaller
-                            const wasCompressed = originalBlob.size > compressedBlob.size + 1024; // +1KB tolerance
-                            resolve({ blob: compressedBlob, wasCompressed });
+                            // Mark as modified if size changed significantly or format changed
+                            const wasModified = originalBlob.size > compressedBlob.size + 1024 || originalBlob.type !== compressedBlob.type;
+                            resolve({ blob: compressedBlob, wasModified });
                         }
-                    }, 'image/jpeg', quality);
+                    }, targetMimeType, quality);
                 };
 
                 tryCompress();
@@ -125,7 +144,7 @@
         });
     }
 
-    function normalizeSources(list) {
+    function encodeSources(list) {
         return list.map(s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '')).join(',');
     }
 
@@ -135,19 +154,20 @@
 
     async function loadConfig() {
         const storedConfig = await GM_getValue('mh_config');
-        MH_CONFIG = storedConfig ? Object.assign({}, DEFAULT_CONFIG, JSON.parse(storedConfig)) : Object.assign({}, DEFAULT_CONFIG);
+        let loadedConfig = storedConfig ? JSON.parse(storedConfig) : {};
 
-        if (MH_CONFIG.hasOwnProperty('autoHighlightMissing')) { // Remove deprecated config
-            delete MH_CONFIG.autoHighlightMissing;
+        MH_CONFIG = Object.assign({}, DEFAULT_CONFIG, loadedConfig);
+
+        if (!MH_CONFIG.hasOwnProperty('compressImages')) {
+            MH_CONFIG.compressImages = DEFAULT_CONFIG.compressImages;
         }
 
         if (!MH_CONFIG.country) {
             MH_CONFIG.country = DEFAULT_CONFIG.country;
         }
 
-        // Ensure new 'compressImages' setting is present if it wasn't in stored config
-        if (!MH_CONFIG.hasOwnProperty('compressImages')) {
-            MH_CONFIG.compressImages = DEFAULT_CONFIG.compressImages;
+        if (MH_CONFIG.hasOwnProperty('autoHighlightMissing')) {
+            delete MH_CONFIG.autoHighlightMissing;
         }
 
         if (!storedConfig) await saveConfig();
@@ -159,7 +179,7 @@
 
         if (cfg.theme) params.set('theme', cfg.theme);
         if (cfg.resolution) params.set('resolution', cfg.resolution);
-        if (cfg.sources && cfg.sources.length) params.set('sources', normalizeSources(cfg.sources));
+        if (cfg.sources && cfg.sources.length) params.set('sources', encodeSources(cfg.sources));
         if (cfg.country) params.set('country', cfg.country.toLowerCase());
         if (artist) params.set('artist', artist);
         if (album) params.set('album', album);
@@ -180,10 +200,6 @@
         const placeholderPatterns = [
             '/defaults/images/album/default_album_300_3.png',
             '/defaults/images/album/default_album_',
-            'https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png',
-            'https://lastfm.freetls.fastly.net/i/u/174s/2a96cbd8b46e442fc41c2b86b821562f.png',
-            'https://lastfm.freetls.fastly.net/i/u/64s/2a96cbd8b46e442fc41c2b86b821562f.png',
-            'https://lastfm.freetls.fastly.net/i/u/34s/2a96cbd8b46e442fc41c2b86b821562f.png',
             '2a96cbd8b46e442fc41c2b86b821562f.png',
             '2a96cbd8b46e442fc41c2b86b821562f.jpg',
             'c6f59c1e5e7240a4c0d427abd71f3dbb.png',
@@ -208,7 +224,6 @@
 
             if (!container) return null;
 
-            // First, try to find an album link (not a track link with /_/)
             let albumLink = null;
             let hasTrackLink = false;
             const allLinks = container.querySelectorAll('a[href*="/music/"]');
@@ -217,7 +232,6 @@
                 const href = link.getAttribute('href');
                 if (!href) continue;
 
-                // Check if this is a track link
                 if (href.includes('/_/')) {
                     hasTrackLink = true;
                     continue;
@@ -226,14 +240,12 @@
                 const pathParts = href.split('/').filter(Boolean);
                 const musicIndex = pathParts.findIndex(p => p === 'music');
 
-                // We need at least artist + album (2 segments after 'music')
                 if (musicIndex >= 0 && pathParts.length >= musicIndex + 3) {
                     albumLink = link;
                     break;
                 }
             }
 
-            // If we found an album link, use it
             if (albumLink) {
                 const href = albumLink.getAttribute('href');
                 if (!href) return null;
@@ -252,8 +264,6 @@
                 }
             }
 
-            // If no album link found but has track link, find artist and go to albums page
-            // This handles track scrobbles in profile tables
             if (!albumLink && hasTrackLink) {
                 for (const link of allLinks) {
                     const href = link.getAttribute('href');
@@ -262,7 +272,6 @@
                     const pathParts = href.split('/').filter(Boolean);
                     const musicIndex = pathParts.findIndex(p => p === 'music');
 
-                    // Check if this is an artist page (only 1 segment after 'music')
                     if (musicIndex >= 0 && pathParts.length === musicIndex + 2) {
                         let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
                         if (cleanHref.startsWith('/')) {
@@ -272,9 +281,6 @@
                     }
                 }
             }
-
-            // If no album link and no track link, this is probably an artist image
-            // We don't want to show indicators for artist profile images
             return null;
 
         } catch (e) {
@@ -282,8 +288,7 @@
             return null;
         }
     }
-
-    function addMissingArtworkIndicator(element, uploadUrl) {
+function addMissingArtworkIndicator(element, uploadUrl) {
         if (element.dataset.missingIndicatorAdded) return;
         element.dataset.missingIndicatorAdded = 'true';
 
@@ -380,14 +385,12 @@
             const classList = img.className || '';
             const parentClass = img.parentElement?.className || '';
 
-            // Skip avatar images
             const isAvatar = classList.includes('avatar') ||
                              parentClass.includes('avatar') ||
                              img.closest('.avatar');
 
             if (isAvatar) return false;
 
-            // Check for album/track cover classes
             const isAlbumCover = classList.includes('cover-art') ||
                                  classList.includes('album-cover') ||
                                  classList.includes('chartlist-image') ||
@@ -406,7 +409,6 @@
                                       img.closest('.header-new-background-image') ||
                                       img.closest('.resource-list--release-list-item-preview');
 
-            // Check if image is in a table row with music links (for profile recent tracks)
             const parentRow = img.closest('tr');
             if (parentRow) {
                 const hasMusicLink = parentRow.querySelector('a[href*="/music/"]');
@@ -433,17 +435,14 @@
 
     // === Page Detection & Extraction ===
     function isUploadPath(pathname = location.pathname) {
-        // Allow profile settings path
         if (/\/settings\/profile\/images\/upload(\/|$|\?)/i.test(pathname)) {
             return true;
         }
 
-        // Check if it's an upload path
         if (!/\/\+images\/upload(\/|$|\?)/i.test(pathname)) {
             return false;
         }
 
-        // Parse the path to count segments
         const parts = pathname.split('/').filter(Boolean);
         const musicIndex = parts.indexOf('music');
 
@@ -451,7 +450,6 @@
             return false;
         }
 
-        // Count segments after 'music' and before '+images'
         const imagesIndex = parts.indexOf('+images');
         if (imagesIndex === -1) return false;
 
@@ -504,7 +502,6 @@
                         }
                         return decoded;
                     } catch {
-                        // Only handle plus signs in fallback case
                         return s.replace(/\+/g, ' ');
                     }
                 };
@@ -526,49 +523,83 @@
             function getLargestImageUrl(element) {
                 if (!element) return null;
 
+                let imageUrl = null;
+
                 if (element.tagName === 'IMG') {
                     const img = element;
-                    if (img.dataset.fullsize) return img.dataset.fullsize;
-                    if (img.dataset.full) return img.dataset.full;
-                    if (img.dataset.original) return img.dataset.original;
-                    if (img.dataset.hires) return img.dataset.hires;
+                    const src = img.src;
 
-                    const parentLink = img.closest('a');
-                    if (parentLink?.href && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(parentLink.href)) {
-                        return parentLink.href;
-                    }
+                    try {
+                        const domain = new URL(src).hostname;
 
-                    if (img.dataset.src) return img.dataset.src;
-
-                    if (img.srcset) {
-                        const sources = img.srcset.split(',').map(s => s.trim().split(' '));
-                        let largestUrl = '', largestWidth = 0;
-                        for (const [url, descriptor] of sources) {
-                            const widthMatch = descriptor?.match(/(\d+)w/);
-                            if (widthMatch) {
-                                const width = parseInt(widthMatch[1], 10);
-                                if (width > largestWidth) {
-                                    largestWidth = width;
-                                    largestUrl = url;
+                        // LINE MUSIC: Replace CDN domain and remove size parameters
+                        if (domain === 'resource-jp-linemusic.line-scdn.net') {
+                            imageUrl = src.replace(/:\/\/[^/]+\/+/, '://obs.line-scdn.net/');
+                            imageUrl = imageUrl.replace(/\/m\d+x\d+/, '');
+                        }
+                        // MUSICBRAINZ: Remove size suffixes to get full resolution
+                        else if (domain === 'coverartarchive.org' || domain.includes('musicbrainz.org')) {
+                            imageUrl = src.replace(/-\d+(x\d+)?(\.jpg|\.png|\.gif)?$/, '$2');
+                            if (!imageUrl || imageUrl === src) {
+                                if (!src.endsWith('/full')) {
+                                    imageUrl = src.split('?')[0].replace(/\/(\d+)(\.jpg|\.png|\.gif)?$/, '/$1/full$2');
+                                    if (!imageUrl || imageUrl === src) {
+                                        imageUrl = src;
+                                    }
+                                } else {
+                                    imageUrl = src;
                                 }
                             }
                         }
-                        if (largestUrl) return largestUrl;
+                        // SPOTIFY: Check parent link for full resolution
+                        else if (domain.includes('scdn.co') && img.closest('a')?.href) {
+                            imageUrl = img.closest('a').href;
+                        }
+                        // Check data attributes for full-size versions
+                        else if (img.dataset.fullsize) imageUrl = img.dataset.fullsize;
+                        else if (img.dataset.full) imageUrl = img.dataset.full;
+                        else if (img.dataset.original) imageUrl = img.dataset.original;
+                        else if (img.dataset.hires) imageUrl = img.dataset.hires;
+                        // Check parent link for image files
+                        else if (img.closest('a')?.href && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.closest('a').href)) {
+                            imageUrl = img.closest('a').href;
+                        }
+                        else if (img.dataset.src) imageUrl = img.dataset.src;
+                        // Parse srcset for largest resolution
+                        else if (img.srcset) {
+                            const sources = img.srcset.split(',').map(s => s.trim().split(' '));
+                            let largestUrl = '', largestWidth = 0;
+                            for (const [url, descriptor] of sources) {
+                                const widthMatch = descriptor?.match(/(\d+)w/);
+                                if (widthMatch) {
+                                    const width = parseInt(widthMatch[1], 10);
+                                    if (width > largestWidth) {
+                                        largestWidth = width;
+                                        largestUrl = url;
+                                    }
+                                }
+                            }
+                            if (largestUrl) imageUrl = largestUrl;
+                        }
+
+                        if (!imageUrl) imageUrl = src;
+
+                    } catch (e) {
+                        imageUrl = src;
                     }
 
-                    return img.src;
+                } else {
+                    // Handle non-img elements with background images
+                    const bgStyle = window.getComputedStyle(element);
+                    if (bgStyle.backgroundImage && bgStyle.backgroundImage !== 'none') {
+                        const match = bgStyle.backgroundImage.match(/url\(["']?(.+?)["']?\)/);
+                        if (match?.[1]) imageUrl = match[1];
+                    }
+                    const childImg = element.querySelector('img');
+                    if (childImg) imageUrl = getLargestImageUrl(childImg);
                 }
 
-                const bgStyle = window.getComputedStyle(element);
-                if (bgStyle.backgroundImage && bgStyle.backgroundImage !== 'none') {
-                    const match = bgStyle.backgroundImage.match(/url\(["']?(.+?)["']?\)/);
-                    if (match?.[1]) return match[1];
-                }
-
-                const childImg = element.querySelector('img');
-                if (childImg) return getLargestImageUrl(childImg);
-
-                return null;
+                return imageUrl;
             }
 
             async function checkImageSize(url) {
@@ -630,11 +661,10 @@
                     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                 `;
                 badge.textContent = `⚠️ ${sizeInMB.toFixed(1)}MB`;
-                badge.title = 'This image may exceed Last.fm\'s 5MB limit';
+                badge.title = `This image may exceed Last.fm's 5MB limit`;
                 return badge;
             }
-
-            function setupClickHandlers() {
+			function setupClickHandlers() {
                 const processedElements = new Set();
                 const allImages = document.querySelectorAll('img');
 
@@ -697,15 +727,28 @@
                         e.stopImmediatePropagation();
 
                         const imageUrl = getLargestImageUrl(imageElement);
-                        const sourceElement = clickTarget.closest('.result-item') || imageElement.closest('.result-item');
-                        const sourceSpan = sourceElement?.querySelector('.image-source span');
-                        const source = sourceSpan?.textContent || 'Unknown Source';
+
+                        let source = 'Unknown Source';
+                        const article = clickTarget.closest('article');
+                        if (article) {
+                            const detailsElement = article.closest('details');
+                            if (detailsElement) {
+                                const summary = detailsElement.querySelector('summary');
+                                if (summary) {
+                                    const titleSpan = summary.querySelector('span.title');
+                                    if (titleSpan) {
+                                        const titleText = titleSpan.childNodes[0]?.textContent?.trim() || titleSpan.textContent.replace(/\s*\([^)]*\)\s*/g, '').trim();
+                                        source = titleText;
+                                    }
+                                }
+                            }
+                        }
 
                         if (imageUrl && window.opener && !window.opener.closed) {
                             window.opener.postMessage({
                                 type: 'LASTFM_ARTWORK_SELECTED',
                                 url: imageUrl,
-                                source: source // Pass the source info
+                                source: source
                             }, 'https://www.last.fm');
 
                             imageElement.dataset.selected = 'true';
@@ -726,7 +769,7 @@
             }
 
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#00c853 0%,#00e676 100%);color:white;text-align:center;padding:12px;z-index:999999;font-size:15px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,-apple-system,sans-serif;';
+            overlay.style.cssText = `position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#00c853 0%,#00e676 100%);color:white;text-align:center;padding:12px;z-index:999999;font-size:15px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,-apple-system,sans-serif;`;
             overlay.textContent = '✨ Click any artwork to select it for Last.fm ✨';
             document.body.prepend(overlay);
 
@@ -778,14 +821,14 @@
             status: isDark ? '#9aa' : '#666'
         };
 
-        Object.assign(panel.style, {
-            position: 'fixed', right: '12px', top: '100px', zIndex: 2147483647,
-            background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`,
-            padding: '12px', borderRadius: '8px',
-            boxShadow: isDark ? '0 8px 30px rgba(0,0,0,0.6)' : '0 8px 30px rgba(0,0,0,0.15)',
-            width: '312px', maxHeight: '85vh', overflowY: 'auto', overflowX: 'hidden',
-            fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, Arial', fontSize: '13px'
-        });
+        panel.setAttribute('style', `
+            position: fixed; right: 12px; top: 100px; z-index: 2147483647;
+            background: ${colors.bg}; color: ${colors.text}; border: 1px solid ${colors.border};
+            padding: 12px; border-radius: 8px;
+            box-shadow: ${isDark ? '0 8px 30px rgba(0,0,0,0.6)' : '0 8px 30px rgba(0,0,0,0.15)'};
+            width: 312px; max-height: 85vh; overflow-y: auto; overflow-x: hidden;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; font-size: 13px;
+        `);
 
         panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -811,12 +854,15 @@
                 <div style="margin-bottom:12px;">
                     <label style="display:block;margin-bottom:4px;color:${colors.label};">Sources: <span id="mh-source-counter" style="font-weight:bold;color:${colors.header};">0/9</span></label>
                     <div id="mh-sources-checkboxes" style="max-height:106px;overflow-y:auto;border:1px solid ${colors.inputBorder};padding:4px;border-radius:4px;background:${colors.inputBg}; display:flex; flex-wrap:wrap;">
-                        ${ALL_SOURCES.map(source => `
-                            <div style="display:flex;align-items:center;margin-bottom:4px;width:50%;">
-                                <input type="checkbox" id="mh-source-${source.replace(/\s/g, '_')}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;accent-color:#337ab7;" class="mh-source-checkbox">
-                                <label for="mh-source-${source.replace(/\s/g, '_')}" style="color:${colors.label};flex-grow:1;cursor:pointer;text-align:left;">${esc(source)}</label>
-                            </div>
-                        `).join('')}
+                        ${ALL_SOURCES.map(source => {
+                            const slug = createSourceSlug(source);
+                            return `
+                                <div style="display:flex;align-items:center;margin-bottom:4px;width:50%;">
+                                    <input type="checkbox" id="mh-source-${slug}" name="mh-sources" value="${esc(source)}" style="margin-right:8px;accent-color:#337ab7;" class="mh-source-checkbox">
+                                    <label for="mh-source-${slug}" style="color:${colors.label};flex-grow:1;cursor:pointer;text-align:left;">${esc(source)}</label>
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                     <div id="mh-source-warning" style="display:none;color:#ff6b6b;font-size:11px;margin-top:4px;">Maximum 9 sources allowed</div>
                 </div>
@@ -906,7 +952,8 @@
         if (compressImagesCheckbox) compressImagesCheckbox.checked = MH_CONFIG.compressImages;
 
         ALL_SOURCES.forEach(source => {
-            const checkbox = $mh(`#mh-source-${source.replace(/\s/g, '_')}`);
+            const slug = createSourceSlug(source);
+            const checkbox = $mh(`#mh-source-${slug}`);
             if (checkbox) checkbox.checked = MH_CONFIG.sources.includes(source);
         });
         $mh('#mh-country-select').value = MH_CONFIG.country;
@@ -1032,35 +1079,35 @@
     }
 
     window.addEventListener('message', async (event) => {
-    if (event.origin !== 'https://covers.musichoarders.xyz') return;
-    if (event.data?.type === 'LASTFM_ARTWORK_SELECTED' && event.data.url) {
-        const statusEl = $mh('#mh-status');
-        try {
-            const fileInput = await findLastFmFileInput();
-            if (!fileInput) {
-                const errMsg = 'Upload input not found. Please ensure the upload dialog is open.';
-                if (statusEl) statusEl.textContent = errMsg;
-                return;
+        if (event.origin !== 'https://covers.musichoarders.xyz') return;
+        if (event.data?.type === 'LASTFM_ARTWORK_SELECTED' && event.data.url) {
+            const statusEl = $mh('#mh-status');
+            try {
+                const fileInput = await findLastFmFileInput();
+                if (!fileInput) {
+                    const errMsg = 'Upload input not found. Please ensure the upload dialog is open.';
+                    if (statusEl) statusEl.textContent = errMsg;
+                    return;
+                }
+
+                if (statusEl) statusEl.textContent = 'Artwork selected! Processing...';
+
+                const { file } = await downloadImageAsFile(event.data.url, event.data.source);
+
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+                await fillLastFmMetadata();
+
+                if (statusEl) statusEl.textContent = `✓ Artwork set! You can now upload.`;
+            } catch (e) {
+                console.error('Failed to set artwork:', e);
+                if (statusEl) statusEl.textContent = `Error: ${e.message}`;
             }
-
-            if (statusEl) statusEl.textContent = 'Artwork selected! Processing...';
-
-            const { file, wasCompressed } = await downloadImageAsFile(event.data.url, event.data.source);
-
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-            fileInput.files = dataTransfer.files;
-            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-            fileInput.dispatchEvent(new Event('input', { bubbles: true }));
-            await fillLastFmMetadata();
-
-            if (statusEl) statusEl.textContent = `✓ Artwork set! You can now upload.`;
-         } catch (e) {
-            console.error('Failed to set artwork:', e);
-            if (statusEl) statusEl.textContent = `Error: ${e.message}`;
         }
-    }
-});
+    });
 
     async function fillLastFmMetadata() {
         try {
@@ -1112,19 +1159,25 @@
 
     function getExtensionFromMime(mime) {
         const map = {
-            'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
-            'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp',
-            'image/tiff': 'tiff', 'image/svg+xml': 'svg'
+            'image/jpeg': 'jpg',
+            'image/jpg': 'jpg',
+            'image/png': 'png',
+            'image/gif': 'gif',
+            'image/webp': 'webp',
+            'image/bmp': 'bmp',
+            'image/tiff': 'tiff',
+            'image/svg+xml': 'svg'
         };
         return map[mime.toLowerCase()] || null;
     }
-
-    // Modified downloadImageAsFile to include compression logic and generate dynamic filename
-    async function downloadImageAsFile(url, source = 'Source Unknown') {
+	/**
+     * Downloads an image and processes it according to compression settings.
+     * Returns the processed file with a descriptive filename.
+     */
+    async function downloadImageAsFile(url, source = 'Unknown Source') {
         let originalBlob;
-        let wasCompressed = false;
+        let wasModified = false;
 
-        // Function to fetch the blob
         const fetchBlob = () => {
             if (typeof GM_xmlhttpRequest === 'function') {
                 return new Promise((resolve, reject) => {
@@ -1150,33 +1203,39 @@
 
         originalBlob = await fetchBlob();
         let processedBlob = originalBlob;
+        const originalSizeMB = originalBlob.size / (1024 * 1024);
 
-        if (MH_CONFIG.compressImages) {
-            try {
-                const compressionResult = await compressImage(originalBlob);
-                processedBlob = compressionResult.blob;
-                wasCompressed = compressionResult.wasCompressed;
-            } catch (e) {
-                console.error("[MH] Image compression failed:", e);
-                // Continue with original blob if compression fails
+        try {
+            if (MH_CONFIG.compressImages && originalSizeMB > 5) {
+                // Only compress if enabled AND image is over 5MB
+                const result = await compressImage(originalBlob, 5, true, 'image/jpeg');
+                processedBlob = result.blob;
+                wasModified = result.wasModified;
+            } else if (!MH_CONFIG.compressImages && (processedBlob.type !== 'image/jpeg' || originalSizeMB > 5)) {
+                // Compression disabled: only convert to JPEG if needed for format or size
+                const result = await compressImage(processedBlob, 5, false, 'image/jpeg');
+                processedBlob = result.blob;
+                wasModified = result.wasModified;
             }
+        } catch (e) {
+            console.error('[MH] Image processing failed:', e);
+            processedBlob = originalBlob;
+            wasModified = false;
         }
 
         const dimensions = await getImageDimensions(processedBlob);
         const mime = processedBlob.type || 'image/jpeg';
         const ext = getExtensionFromUrl(url) || getExtensionFromMime(mime) || 'jpg';
-        const fileSizeMB = (processedBlob.size / (1024 * 1024)).toFixed(1);
+        const fileSizeMB = Math.max(0.1, parseFloat((processedBlob.size / (1024 * 1024)).toFixed(1)));
 
-        // Construct the dynamic filename
-        let fileName = `${dimensions.width}x${dimensions.height}, ${fileSizeMB}MB${wasCompressed ? ' (Compressed)' : ''}.${ext}`;
+        const fileName = `${source}, ${dimensions.width}x${dimensions.height}, ${fileSizeMB}MB${wasModified ? ' (Compressed)' : ''}.${ext}`;
 
         try {
-            return { file: new File([processedBlob], fileName, { type: mime }), wasCompressed };
+            return { file: new File([processedBlob], fileName, { type: mime }), wasModified };
         } catch {
-            // Fallback for older browsers
             processedBlob.name = fileName;
             processedBlob.type = mime;
-            return { file: processedBlob, wasCompressed };
+            return { file: processedBlob, wasModified };
         }
     }
 
@@ -1246,6 +1305,7 @@
             }
         });
 
+        // Debug helper
         window._CoverFinder = {
             buildMhUrl: () => {
                 const info = extractArtistAlbum();
