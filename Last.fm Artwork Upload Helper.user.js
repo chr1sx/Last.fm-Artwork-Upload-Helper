@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.1.8
+// @version      1.2.0
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -13,8 +13,8 @@
 // @run-at       document-idle
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/refs/heads/main/Images/logo-128.png
-// @downloadURL  https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.user.js
-// @updateURL    https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.meta.js
+// @downloadURL https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.user.js
+// @updateURL https://update.greasyfork.org/scripts/554242/Lastfm%20Artwork%20Upload%20Helper.meta.js
 // ==/UserScript==
 
 (function () {
@@ -191,6 +191,63 @@
         return `https://covers.musichoarders.xyz/?${params.toString()}`;
     }
 
+    // Color palette for different albums on user profiles
+    const INDICATOR_COLORS = [
+        '#d32f2f', // Red (default)
+        '#1976d2', // Blue
+        '#388e3c', // Green
+        '#f57c00', // Orange
+        '#7b1fa2', // Purple
+        '#c2185b', // Pink
+        '#0097a7', // Cyan
+        '#fbc02d', // Yellow
+        '#5d4037', // Brown
+        '#455a64'  // Blue Grey
+    ];
+
+    // Map to track album URLs and their assigned colors (only for user profiles)
+    const albumColorMap = new Map();
+    let colorIndex = 0;
+
+    // Function to get color for an album (only varies on user profiles)
+    function getIndicatorColor(uploadUrl) {
+        // Check if we're on a user profile page
+        const isUserProfile = /^\/user\/[^/]+\/?$/.test(window.location.pathname);
+
+        if (!isUserProfile) {
+            return INDICATOR_COLORS[0]; // Always red outside user profiles
+        }
+
+        // On user profiles, assign unique colors per album
+        if (!uploadUrl) return INDICATOR_COLORS[0];
+
+        if (albumColorMap.has(uploadUrl)) {
+            return albumColorMap.get(uploadUrl);
+        }
+
+        const color = INDICATOR_COLORS[colorIndex % INDICATOR_COLORS.length];
+        albumColorMap.set(uploadUrl, color);
+        colorIndex++;
+
+        return color;
+    }
+
+    // Helper function to lighten a color
+    function lightenColor(color, percent) {
+        // Convert hex to RGB
+        const num = parseInt(color.replace('#', ''), 16);
+        const r = (num >> 16) + Math.round(2.55 * percent);
+        const g = ((num >> 8) & 0x00FF) + Math.round(2.55 * percent);
+        const b = (num & 0x0000FF) + Math.round(2.55 * percent);
+
+        // Clamp values and convert back to hex
+        const newR = Math.min(255, Math.max(0, r));
+        const newG = Math.min(255, Math.max(0, g));
+        const newB = Math.min(255, Math.max(0, b));
+
+        return '#' + ((newR << 16) | (newG << 8) | newB).toString(16).padStart(6, '0');
+    }
+
     // === Missing Artwork Detection ===
     function isMissingArtwork(element) {
         if (!element) return false;
@@ -214,13 +271,14 @@
     function getUploadUrlFromElement(element) {
         try {
             const container = element.closest('tr') ||
-                              element.closest('.chartlist-row') ||
-                              element.closest('.album-item') ||
-                              element.closest('.grid-items-item') ||
-                              element.closest('.grid-items-item-main-text') ||
-                              element.closest('.resource-list--release-list-item') ||
-                              element.closest('li') ||
-                              element.closest('section');
+                            element.closest('.chartlist-row') ||
+                            element.closest('.album-item') ||
+                            element.closest('.grid-items-item') ||
+                            element.closest('.grid-items-item-main-text') ||
+                            element.closest('.resource-list--release-list-item') ||
+                            element.closest('.recs-feed-item') ||
+                            element.closest('li') ||
+                            element.closest('section');
 
             if (!container) return null;
 
@@ -264,6 +322,46 @@
                 }
             }
 
+            if (!albumLink && !hasTrackLink) {
+                const albumTitleLink = container.querySelector('a.link-block-target');
+                if (albumTitleLink) {
+                    let href = albumTitleLink.getAttribute('href');
+                    if (href) {
+                        let cleanHref = href.split('#')[0].split('?')[0].replace(/\/$/, '');
+                        if (cleanHref.startsWith('/')) {
+                            cleanHref = 'https://www.last.fm' + cleanHref;
+                        }
+
+                        const pathParts = cleanHref.split('/').filter(Boolean);
+                        const musicIndex = pathParts.indexOf('music');
+
+                        if (musicIndex >= 0 && pathParts.length >= musicIndex + 3) {
+                            const albumPath = pathParts.slice(musicIndex).join('/');
+                            return `https://www.last.fm/${albumPath}/+images/upload`;
+                        }
+                    }
+                }
+
+                const currentPath = window.location.pathname;
+                if (currentPath.includes('/+albums')) {
+                    const pathParts = currentPath.split('/').filter(Boolean);
+                    const musicIndex = pathParts.indexOf('music');
+
+                    if (musicIndex >= 0 && pathParts.length > musicIndex + 1) {
+                        const artistName = pathParts[musicIndex + 1];
+
+                        const albumNameElement = container.querySelector('.link-block-target');
+                        if (albumNameElement) {
+                            const albumName = albumNameElement.textContent.trim();
+                            if (albumName) {
+                                const encodedAlbum = encodeURIComponent(albumName).replace(/%20/g, '+');
+                                return `https://www.last.fm/music/${artistName}/${encodedAlbum}/+images/upload`;
+                            }
+                        }
+                    }
+                }
+            }
+
             if (!albumLink && hasTrackLink) {
                 for (const link of allLinks) {
                     const href = link.getAttribute('href');
@@ -281,6 +379,7 @@
                     }
                 }
             }
+
             return null;
 
         } catch (e) {
@@ -288,7 +387,9 @@
             return null;
         }
     }
-function addMissingArtworkIndicator(element, uploadUrl) {
+
+    // Modified addMissingArtworkIndicator function with color support
+    function addMissingArtworkIndicator(element, uploadUrl) {
         if (element.dataset.missingIndicatorAdded) return;
         element.dataset.missingIndicatorAdded = 'true';
 
@@ -298,6 +399,8 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                         element.closest('.chartlist-image') ||
                         element.closest('.grid-items-cover-image') ||
                         element.closest('.resource-list--release-list-item-preview') ||
+                        element.closest('.recs-feed-cover-image') ||
+                        element.closest('.layout-image') ||
                         element.parentElement;
 
         if (!container) return;
@@ -307,6 +410,10 @@ function addMissingArtworkIndicator(element, uploadUrl) {
             container.style.position = 'relative';
         }
 
+        // Get color for this album
+        const indicatorColor = getIndicatorColor(uploadUrl);
+        const hoverColor = lightenColor(indicatorColor, 10); // Slightly lighter on hover
+
         const borderOverlay = document.createElement('div');
         borderOverlay.className = 'mh-missing-border';
         borderOverlay.style.cssText = `
@@ -315,7 +422,7 @@ function addMissingArtworkIndicator(element, uploadUrl) {
             left: 0;
             right: 0;
             bottom: 0;
-            border: 3px solid #d32f2f;
+            border: 3px solid ${indicatorColor};
             border-radius: inherit;
             pointer-events: none;
             z-index: 10;
@@ -329,7 +436,7 @@ function addMissingArtworkIndicator(element, uploadUrl) {
             right: -10px;
             width: 24px;
             height: 24px;
-            background: #d32f2f;
+            background: ${indicatorColor};
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -348,13 +455,17 @@ function addMissingArtworkIndicator(element, uploadUrl) {
         badge.textContent = '+';
         badge.title = 'Missing Artwork - Click to upload';
 
+        // Store colors for hover effect
+        badge.dataset.baseColor = indicatorColor;
+        badge.dataset.hoverColor = hoverColor;
+
         badge.addEventListener('mouseenter', () => {
             badge.style.transform = 'scale(1.1)';
-            badge.style.background = '#e53935';
+            badge.style.background = badge.dataset.hoverColor;
         });
         badge.addEventListener('mouseleave', () => {
             badge.style.transform = 'scale(1)';
-            badge.style.background = '#d32f2f';
+            badge.style.background = badge.dataset.baseColor;
         });
 
         badge.addEventListener('click', (e) => {
@@ -374,9 +485,18 @@ function addMissingArtworkIndicator(element, uploadUrl) {
         container.appendChild(badge);
     }
 
+    // Modified scanPageForMissingArtwork to reset colors on page change
     function scanPageForMissingArtwork() {
         if (!MH_CONFIG.showMissingIndicators) {
             return;
+        }
+
+        // Check if we changed pages - if so, reset color mapping
+        const currentPath = window.location.pathname;
+        if (window._lastScannedPath !== currentPath) {
+            window._lastScannedPath = currentPath;
+            albumColorMap.clear();
+            colorIndex = 0;
         }
 
         const allImages = Array.from(document.querySelectorAll('img[src*="lastfm"]'));
@@ -386,28 +506,31 @@ function addMissingArtworkIndicator(element, uploadUrl) {
             const parentClass = img.parentElement?.className || '';
 
             const isAvatar = classList.includes('avatar') ||
-                             parentClass.includes('avatar') ||
-                             img.closest('.avatar');
+                            parentClass.includes('avatar') ||
+                            img.closest('.avatar');
 
             if (isAvatar) return false;
 
             const isAlbumCover = classList.includes('cover-art') ||
-                                 classList.includes('album-cover') ||
-                                 classList.includes('chartlist-image') ||
-                                 classList.includes('grid-items-cover-image-image') ||
-                                 classList.includes('resource-list--release-list-item-preview-image') ||
-                                 parentClass.includes('cover-art') ||
-                                 parentClass.includes('album') ||
-                                 parentClass.includes('chartlist-image') ||
-                                 parentClass.includes('grid-items-cover-image') ||
-                                 parentClass.includes('resource-list--release-list-item-preview');
+                                classList.includes('album-cover') ||
+                                classList.includes('chartlist-image') ||
+                                classList.includes('grid-items-cover-image-image') ||
+                                classList.includes('resource-list--release-list-item-preview-image') ||
+                                classList.includes('layout-image-image') ||
+                                parentClass.includes('cover-art') ||
+                                parentClass.includes('album') ||
+                                parentClass.includes('chartlist-image') ||
+                                parentClass.includes('grid-items-cover-image') ||
+                                parentClass.includes('resource-list--release-list-item-preview') ||
+                                parentClass.includes('layout-image');
 
             const hasAlbumContainer = img.closest('.cover-art') ||
-                                      img.closest('.album-cover-art') ||
-                                      img.closest('.chartlist-image') ||
-                                      img.closest('.grid-items-cover-image') ||
-                                      img.closest('.header-new-background-image') ||
-                                      img.closest('.resource-list--release-list-item-preview');
+                                    img.closest('.album-cover-art') ||
+                                    img.closest('.chartlist-image') ||
+                                    img.closest('.grid-items-cover-image') ||
+                                    img.closest('.header-new-background-image') ||
+                                    img.closest('.resource-list--release-list-item-preview') ||
+                                    img.closest('.recs-feed-cover-image');
 
             const parentRow = img.closest('tr');
             if (parentRow) {
