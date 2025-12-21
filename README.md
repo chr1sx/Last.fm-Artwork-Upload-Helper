@@ -90,7 +90,7 @@ _Default: 0_
 
 ### Country
 Select your preferred country for localized results:  
-Australia, Brazil, Canada, China, France, Germany, India, Italy, Japan, Korea, Mexico, Taiwan, UK, US  
+Australia, Brazil, Canada, China, France, Germany, India, Italy, Japan, Korea, Spain, Taiwan, UK, US  
 _Default: United States_
 
 ### Theme
