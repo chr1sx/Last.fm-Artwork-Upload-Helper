@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.2.1
+// @version      1.2.2
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -948,7 +948,7 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                         <option value="it">Italy</option>
                         <option value="jp">Japan</option>
                         <option value="kr">Korea</option>
-                        <option value="mx">Mexico</option>
+                        <option value="es">Spain</option>
                         <option value="tw">Taiwan</option>
                         <option value="gb">United Kingdom</option>
                         <option value="us">United States</option>
