@@ -72,15 +72,15 @@ Select up to nine platforms to search:
 _Default: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify_
 
 ### Show Missing Artwork Indicators
-Enable or disable indicators on the page you're on.  
+Toggle indicators on the page you're on.  
 _Default: Enabled_
 
 ### Open Upload Page In New Tab
-Enable or disable opening upload page in new tab via indicator.  
+Toggle opening upload page in new tab via indicator.  
 _Default: Enabled_
 
 ### Compress Large Images
-Enable or disable automatic compression for images that exceed the 5 MB limit.  
+Toggle automatic compression for images that exceed the 5 MB limit.  
 _Default: Enabled_
 
 ### Minimal Resolution
