@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.2.2
+// @version      1.2.3
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -543,9 +543,12 @@ function addMissingArtworkIndicator(element, uploadUrl) {
             if (mi >= 0 && parts.length > mi + 2) {
                 const d = s => {
                     try {
-                        let decoded = decodeURIComponent(s);
-                        while (decoded.includes('%') && decoded !== decodeURIComponent(decoded)) {
-                            decoded = decodeURIComponent(decoded);
+                        let normalized = s.replace(/\+/g, '%20');
+                        let decoded = decodeURIComponent(normalized);
+                        while (decoded.includes('%')) {
+                            const next = decodeURIComponent(decoded);
+                            if (next === decoded) break;
+                               decoded = next;
                         }
                         return decoded;
                     } catch {
