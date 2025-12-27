@@ -63,10 +63,10 @@
 
 ### Sources
 Select up to nine platforms to search:
-- **Streaming**: Amazon Music, Apple Music, Deezer, Spotify, TIDAL, FLO  
+- **Streaming**: Amazon Music, Apple Music, Deezer, Spotify, TIDAL  
 - **Stores**: Bandcamp, Beatport, BOOTH, iTunes, OTOTOY, Qobuz  
 - **Databases**: Discogs, MusicBrainz, VGMdb, THWiki  
-- **Regional**: Bugs, Gaana, KKBOX, KuGou, LINE MUSIC, Melon  
+- **Regional**: Bugs (KR), FLO (KR), Gaana (IN), KKBOX (TW), KuGou (CN), LINE MUSIC (JP), Melon (KR)  
 - **Other**: Fanart.tv, Soulseek  
 
 _Default: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify_
