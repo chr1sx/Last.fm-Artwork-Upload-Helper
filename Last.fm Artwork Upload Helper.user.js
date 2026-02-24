@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.2.3
+// @version      1.2.5
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -37,7 +37,7 @@
     const ALL_SOURCES = [
         'Amazon Music', 'Apple Music', 'Bandcamp', 'Beatport', 'BOOTH', 'Bugs', 'Deezer', 'Discogs',
         'Fanart.tv', 'FLO', 'Gaana', 'iTunes', 'KKBOX', 'KuGou', 'LINE MUSIC', 'Melon',
-        'MusicBrainz', 'OTOTOY', 'Qobuz', 'Soulseek', 'Spotify', 'THWiki', 'TIDAL', 'VGMdb'
+        'MusicBrainz', 'OTOTOY', 'Qobuz', 'Soulseek', 'Spotify', 'THWiki', 'TIDAL', 'VGMdb', 'SoundCloud'
     ];
 
     // Creates a clean slug for source names to use in HTML IDs
