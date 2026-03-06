@@ -5,7 +5,8 @@
 # Last.fm Artwork Upload Helper
 
 [![Install Script](https://img.shields.io/badge/Install%20Script-brightgreen?style=for-the-badge)](https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/main/Last.fm%20Artwork%20Upload%20Helper.user.js)
-[![Firefox Add-on](https://img.shields.io/amo/v/last-fm-artwork-upload-helper?style=for-the-badge&logo=firefox&logoColor=white&color=orange&label=Firefox%20Add-on)](https://addons.mozilla.org/en-US/firefox/addon/last-fm-artwork-upload-helper/)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/modkjmdpdmpcnbfnimfikopdnmbongcm?style=for-the-badge&logo=google-chrome&logoColor=white&color=EA4335&label=Chrome)](https://chromewebstore.google.com/detail/lastfm-artwork-upload-hel/modkjmdpdmpcnbfnimfikopdnmbongcm)
+[![Firefox Add-on](https://img.shields.io/amo/v/last-fm-artwork-upload-helper?style=for-the-badge&logo=firefox&logoColor=white&color=orange&label=Firefox)](https://addons.mozilla.org/en-US/firefox/addon/last-fm-artwork-upload-helper/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)  
 
 *A userscript that streamlines uploading album artwork to Last.fm*
