@@ -19,7 +19,7 @@
 
 - **Missing Artwork Indicators** - Highlights missing artwork on the page you're on
 - **Seamless Integration** - Detects Last.fm upload pages and injects a helper panel
-- **Multi-Source Search** - Search across 24 platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)
+- **Multi-Source Search** - Search across 20+ platforms via [COV - Cover Search Engine](https://covers.musichoarders.xyz/)
 - **Direct Upload** - Uploads artwork directly from search results without manual downloads
 - **Image Compression** - Automatically compresses images larger than 5 MB
 - **Themes** - Choose between light and dark mode
@@ -68,7 +68,7 @@ Select up to nine platforms to search:
 - **Stores**: Bandcamp, Beatport, BOOTH, iTunes, OTOTOY, Qobuz  
 - **Databases**: Discogs, MusicBrainz, VGMdb, THWiki  
 - **Regional**: Bugs (KR), FLO (KR), Gaana (IN), KKBOX (TW), KuGou (CN), LINE MUSIC (JP), Melon (KR)  
-- **Other**: Fanart.tv, Soulseek  
+- **Other**: Fanart.tv, Soulseek, SoundCloud  
 
 _Default: Bandcamp, Deezer, Discogs, iTunes, KuGou, Qobuz, Spotify_
 
