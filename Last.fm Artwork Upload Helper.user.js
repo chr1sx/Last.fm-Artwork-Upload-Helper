@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.2.5
+// @version      1.2.6
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -10,6 +10,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @connect      covers.musichoarders.xyz
+// @connect      *
 // @run-at       document-idle
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/refs/heads/main/Images/logo-128.png
@@ -20,7 +21,6 @@
 (function () {
     'use strict';
 
-    // === Configuration ===
     const DEFAULT_CONFIG = {
         theme: 'light',
         resolution: '0',
@@ -40,12 +40,10 @@
         'MusicBrainz', 'OTOTOY', 'Qobuz', 'Soulseek', 'Spotify', 'THWiki', 'TIDAL', 'VGMdb', 'SoundCloud'
     ];
 
-    // Creates a clean slug for source names to use in HTML IDs
     function createSourceSlug(sourceName) {
         return sourceName.replace(/[^a-zA-Z0-9_]/g, '_');
     }
 
-    // === Utility Functions ===
     const $mh = (s, r = document) => r.querySelector(s);
     const $$mh = (s, r = document) => Array.from(r.querySelectorAll(s));
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -71,18 +69,9 @@
         });
     }
 
-    /**
-     * Compresses/converts an image blob to meet size and format requirements.
-     * @param {Blob} blob - The image blob to process
-     * @param {number} maxSizeMB - Maximum allowed size in megabytes (default: 5)
-     * @param {boolean} forceResize - If true, always resize to maxDimension. If false, only resize if needed for size/quality (default: true)
-     * @param {string} targetMimeType - Desired output format (default: 'image/jpeg')
-     * @returns {Promise<{blob: Blob, wasModified: boolean}>} Processed blob and modification flag
-     */
     async function compressImage(blob, maxSizeMB = 5, forceResize = true, targetMimeType = 'image/jpeg') {
         const sizeInMB = blob.size / (1024 * 1024);
 
-        // Short-circuit if no processing needed
         if (!forceResize && sizeInMB <= maxSizeMB && blob.type === targetMimeType) {
             return { blob, wasModified: false };
         }
@@ -97,7 +86,6 @@
                 let height = img.height;
                 const maxDimension = 1400;
 
-                // Resize logic: force resize if enabled, or if image exceeds maxDimension
                 if (forceResize && (width > maxDimension || height > maxDimension)) {
                     if (width > height) {
                         height = (height / width) * maxDimension;
@@ -124,12 +112,10 @@
 
                         const compressedSizeMB = compressedBlob.size / (1024 * 1024);
 
-                        // Reduce quality by 5% if still over limit and quality can be reduced further
                         if (compressedSizeMB > maxSizeMB && quality > 0.5) {
                             quality -= 0.05;
                             tryCompress();
                         } else {
-                            // Mark as modified if size changed significantly or format changed
                             const wasModified = originalBlob.size > compressedBlob.size + 1024 || originalBlob.type !== compressedBlob.type;
                             resolve({ blob: compressedBlob, wasModified });
                         }
@@ -191,7 +177,6 @@
         return `https://covers.musichoarders.xyz/?${params.toString()}`;
     }
 
-    // === Missing Artwork Detection ===
     function isMissingArtwork(element) {
         if (!element) return false;
 
@@ -480,7 +465,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
     });
 }
 
-    // === Page Detection & Extraction ===
     function isUploadPath(pathname = location.pathname) {
         if (/\/settings\/profile\/images\/upload(\/|$|\?)/i.test(pathname)) {
             return true;
@@ -563,7 +547,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
         return null;
     }
 
-    // === Cover Search Engine Page Logic ===
     const isMHPage = location.hostname === 'covers.musichoarders.xyz';
 
     if (isMHPage) {
@@ -582,12 +565,10 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                     try {
                         const domain = new URL(src).hostname;
 
-                        // LINE MUSIC: Replace CDN domain and remove size parameters
                         if (domain === 'resource-jp-linemusic.line-scdn.net') {
                             imageUrl = src.replace(/:\/\/[^/]+\/+/, '://obs.line-scdn.net/');
                             imageUrl = imageUrl.replace(/\/m\d+x\d+/, '');
                         }
-                        // MUSICBRAINZ: Remove size suffixes to get full resolution
                         else if (domain === 'coverartarchive.org' || domain.includes('musicbrainz.org')) {
                             imageUrl = src.replace(/-\d+(x\d+)?(\.jpg|\.png|\.gif)?$/, '$2');
                             if (!imageUrl || imageUrl === src) {
@@ -601,21 +582,17 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                                 }
                             }
                         }
-                        // SPOTIFY: Check parent link for full resolution
                         else if (domain.includes('scdn.co') && img.closest('a')?.href) {
                             imageUrl = img.closest('a').href;
                         }
-                        // Check data attributes for full-size versions
                         else if (img.dataset.fullsize) imageUrl = img.dataset.fullsize;
                         else if (img.dataset.full) imageUrl = img.dataset.full;
                         else if (img.dataset.original) imageUrl = img.dataset.original;
                         else if (img.dataset.hires) imageUrl = img.dataset.hires;
-                        // Check parent link for image files
                         else if (img.closest('a')?.href && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(img.closest('a').href)) {
                             imageUrl = img.closest('a').href;
                         }
                         else if (img.dataset.src) imageUrl = img.dataset.src;
-                        // Parse srcset for largest resolution
                         else if (img.srcset) {
                             const sources = img.srcset.split(',').map(s => s.trim().split(' '));
                             let largestUrl = '', largestWidth = 0;
@@ -639,7 +616,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                     }
 
                 } else {
-                    // Handle non-img elements with background images
                     const bgStyle = window.getComputedStyle(element);
                     if (bgStyle.backgroundImage && bgStyle.backgroundImage !== 'none') {
                         const match = bgStyle.backgroundImage.match(/url\(["']?(.+?)["']?\)/);
@@ -846,7 +822,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
         return;
     }
 
-    // === Last.fm Page Logic ===
     let currentInfo = extractArtistAlbum();
 
     function createPanel() {
@@ -1257,12 +1232,10 @@ function addMissingArtworkIndicator(element, uploadUrl) {
 
         try {
             if (MH_CONFIG.compressImages && originalSizeMB > 5) {
-                // Only compress if enabled AND image is over 5MB
                 const result = await compressImage(originalBlob, 5, true, 'image/jpeg');
                 processedBlob = result.blob;
                 wasModified = result.wasModified;
             } else if (!MH_CONFIG.compressImages && (processedBlob.type !== 'image/jpeg' || originalSizeMB > 5)) {
-                // Compression disabled: only convert to JPEG if needed for format or size
                 const result = await compressImage(processedBlob, 5, false, 'image/jpeg');
                 processedBlob = result.blob;
                 wasModified = result.wasModified;
@@ -1289,7 +1262,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
         }
     }
 
-    // === Initialization ===
     (async () => {
         await loadConfig();
 
@@ -1355,7 +1327,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
             }
         });
 
-        // Debug helper
         window._CoverFinder = {
             buildMhUrl: () => {
                 const info = extractArtistAlbum();
