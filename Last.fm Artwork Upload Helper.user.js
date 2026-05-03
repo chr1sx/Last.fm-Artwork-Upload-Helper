@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      1.2.6
+// @version      1.2.7
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -718,10 +718,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                     });
 
                     const hoverHandler = async () => {
-                        imageElement.style.outline = '3px solid #00ff00';
-                        imageElement.style.boxShadow = '0 0 15px rgba(0,255,0,0.5)';
-                        imageElement.style.filter = 'brightness(1.1)';
-
                         if (!clickTarget.querySelector('.mh-size-warning')) {
                             const imageUrl = getLargestImageUrl(imageElement);
                             if (imageUrl) {
@@ -734,13 +730,7 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                         }
                     };
 
-                    const unhoverHandler = () => {
-                        if (!imageElement.dataset.selected) {
-                            imageElement.style.outline = '';
-                            imageElement.style.boxShadow = '';
-                            imageElement.style.filter = '';
-                        }
-                    };
+                    const unhoverHandler = () => {};
 
                     clickTarget.addEventListener('mouseenter', hoverHandler, true);
                     imageElement.addEventListener('mouseenter', hoverHandler, true);
@@ -778,8 +768,6 @@ function addMissingArtworkIndicator(element, uploadUrl) {
                             }, 'https://www.last.fm');
 
                             imageElement.dataset.selected = 'true';
-                            imageElement.style.outline = '3px solid #00ff00';
-                            imageElement.style.boxShadow = '0 0 20px rgba(0,255,0,0.8)';
 
                             try { window.opener.focus(); } catch {}
                             setTimeout(() => window.close(), 500);
