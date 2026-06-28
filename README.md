@@ -38,7 +38,7 @@
 1. Install a userscript manager for your web browser.  
 2. [Install the userscript](https://raw.githubusercontent.com/chr1sx/Last.fm-Artwork-Upload-Helper/main/Last.fm%20Artwork%20Upload%20Helper.user.js).  
 3. Your userscript manager will open and prompt you to install.  
-4. Click Install.
+4. For Tampermonkey it might also be necessary to enable “Allow user scripts” under extension options.
 
 ---
 
