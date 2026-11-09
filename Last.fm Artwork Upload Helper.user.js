@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Last.fm Artwork Upload Helper
 // @namespace    https://github.com/chr1sx/Last.fm-Artwork-Upload-Helper
-// @version      2.0
+// @version      2.0.1
 // @description  A userscript that streamlines the process of uploading album artwork to Last.fm with visual missing artwork detection and batch mode support
 // @author       chr1sx
 // @match        https://www.last.fm/*
@@ -27,7 +27,7 @@
         console.warn('[MH] Another copy of Last.fm Artwork Upload Helper is already running on this page (userscript and extension both enabled?). Disable one of them.');
         return;
     }
-    document.documentElement.setAttribute('data-mh-helper-loaded', '2.0');
+    document.documentElement.setAttribute('data-mh-helper-loaded', '2.0.1');
 
     const DEFAULT_CONFIG = {
         theme: 'auto',
@@ -2775,16 +2775,33 @@ html body .mh-missing-badge[data-mh-state="done"]:hover{background: #2e7d32 !imp
         let stopped = false;
         let resumeAt = null;
         let ended = false;
+        let rateLimited = false;
 
+        const aborter = new AbortController();
         const fetchPage = async (page) => {
             const res = await fetch(scope.pageUrl(page), {
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                signal: aborter.signal
             });
 
+            if (res.status === 429) {
+                throw makeRateLimitError(parseInt(res.headers.get('retry-after'), 10) || 0);
+            }
             if (res.status === 404 && page > 1) return null;
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                let body = '';
+                try { body = await res.text(); } catch (e) {}
+                if (isRateLimitedResponse(body, res.status)) throw makeRateLimitError();
+                throw new Error(`HTTP ${res.status}`);
+            }
 
             const html = await res.text();
+            if (isRateLimitedResponse(html, res.status)) throw makeRateLimitError();
+            if (isDbErrorResponse(html)) {
+                const dbErr = new Error('Last.fm database error: "There was a problem loading your top albums"');
+                dbErr.dbError = true;
+                throw dbErr;
+            }
             if (isBlockedResponse(html)) {
                 throw new Error('Last.fm is temporarily blocking requests (anti-bot page)');
             }
@@ -2809,13 +2826,40 @@ html body .mh-missing-badge[data-mh-state="done"]:hover{background: #2e7d32 !imp
 
                 try {
                     let pageDoc;
-                    try {
-                        const early = lookahead.get(page);
-                        lookahead.delete(page);
-                        pageDoc = await (early || fetchPage(page));
-                    } catch (firstAttemptError) {
-                        await sleep(1500);
-                        pageDoc = await fetchPage(page);
+                    let rateWaits = 0;
+                    let attempt = 0;
+                    let dbRetries = 0;
+                    while (true) {
+                        try {
+                            const early = lookahead.get(page);
+                            lookahead.delete(page);
+                            pageDoc = await (early || fetchPage(page));
+                            break;
+                        } catch (attemptError) {
+                            if (BATCH.scanToken !== token) return;
+                            if (attemptError && attemptError.rateLimited) {
+                                lookahead.clear();
+                                if (rateWaits >= RATE_LIMIT_MAX_WAITS) throw attemptError;
+                                rateWaits++;
+                                const waitS = Math.max(RATE_LIMIT_COOLDOWN_S, attemptError.retryAfter || 0);
+                                console.warn(`[MH] Rate limited on page ${page}, waiting ${waitS}s (${rateWaits}/${RATE_LIMIT_MAX_WAITS})`);
+                                for (let left = waitS; left > 0; left--) {
+                                    if (BATCH.scanToken !== token) return;
+                                    setBatchStatus(`Rate limited at page ${page} \u00b7 resuming in ${left}s (${rateWaits}/${RATE_LIMIT_MAX_WAITS})`, true);
+                                    await sleep(1000);
+                                }
+                                continue;
+                            }
+                            if (attemptError && attemptError.dbError) {
+                                if (dbRetries >= DB_ERROR_MAX_RETRIES) throw attemptError;
+                                dbRetries++;
+                                console.warn(`[MH] Last.fm database error on page ${page}, retrying (${dbRetries}/${DB_ERROR_MAX_RETRIES})`);
+                                setBatchStatus(`Last.fm database error at page ${page} \u00b7 retrying (${dbRetries}/${DB_ERROR_MAX_RETRIES})`, true);
+                                continue;
+                            }
+                            if (attempt++ >= 1) throw attemptError;
+                            await sleep(1500);
+                        }
                     }
 
                     if (BATCH.scanToken !== token) return;
@@ -2851,6 +2895,11 @@ html body .mh-missing-badge[data-mh-state="done"]:hover{background: #2e7d32 !imp
                     if (!firstError) firstError = lastError;
                     if (resumeAt === null) resumeAt = page;
                     console.warn('[MH] Batch scan failed for page', page, e);
+                    if (e && e.rateLimited) {
+                        rateLimited = true;
+                        stopped = true;
+                        break;
+                    }
                     if (consecutiveFailures >= 3) {
                         stopped = true;
                         break;
@@ -2873,7 +2922,10 @@ html body .mh-missing-badge[data-mh-state="done"]:hover{background: #2e7d32 !imp
 
             let text;
             let isError = false;
-            if (fetched === 0) {
+            if (rateLimited) {
+                text = `Rate limited by Last.fm at page ${resumeAt || BATCH.scanNext} \u00b7 scanned ${fetched} page${fetched === 1 ? '' : 's'}${missing ? ` \u00b7 ${albumText} found` : ''} \u00b7 wait a few minutes, then scan again to resume`;
+                isError = true;
+            } else if (fetched === 0) {
                 text = `Scan failed: ${firstError || 'no library pages could be read'}`;
                 isError = true;
             } else if (stopped && failed > 0) {
@@ -2893,6 +2945,7 @@ html body .mh-missing-badge[data-mh-state="done"]:hover{background: #2e7d32 !imp
                 setBatchStatus(text, isError);
             }
         } finally {
+            try { aborter.abort(); } catch (e) {}
             if (BATCH.scanToken === token) {
                 BATCH.scanning = false;
                 BATCH.scanProgress = null;
@@ -2984,6 +3037,26 @@ html body .mh-missing-badge[data-mh-state="done"]:hover{background: #2e7d32 !imp
             });
         }
         return last;
+    }
+
+    const DB_ERROR_MAX_RETRIES = 3;
+    const RATE_LIMIT_COOLDOWN_S = 10;
+    const RATE_LIMIT_MAX_WAITS = 6;
+
+    function isRateLimitedResponse(html, status) {
+        if (status === 429) return true;
+        return /requesting too many pages|requesting a lot of pages|enjoy a cup of tea|too many requests/i.test(html || '');
+    }
+
+    function isDbErrorResponse(html) {
+        return /there was a problem loading your/i.test(html || '');
+    }
+
+    function makeRateLimitError(retryAfterS) {
+        const err = new Error('Last.fm rate limit: "You\u2019re requesting too many pages"');
+        err.rateLimited = true;
+        err.retryAfter = retryAfterS || 0;
+        return err;
     }
 
     function isBlockedResponse(html) {
